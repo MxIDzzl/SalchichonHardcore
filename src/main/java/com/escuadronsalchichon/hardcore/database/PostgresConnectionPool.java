@@ -11,9 +11,8 @@ import java.sql.SQLException;
 /**
  * Owns the PostgreSQL connection pool.
  *
- * This pool is deliberately not wired into DatabaseManager yet: the live plugin
- * continues to use hardcore.db until the SQLite importer and parity checks are
- * implemented and explicitly enabled.
+ * The pool is selected only when PostgreSQL is explicitly enabled in the
+ * host-side configuration. SQLite remains the default backend.
  */
 public final class PostgresConnectionPool implements AutoCloseable {
 
@@ -64,8 +63,13 @@ public final class PostgresConnectionPool implements AutoCloseable {
         poolConfig.setJdbcUrl("jdbc:postgresql://" + host + ":" + port + "/" + database);
         poolConfig.setUsername(username);
         poolConfig.setPassword(password);
-        poolConfig.setMaximumPoolSize(Math.max(2, config.getInt(prefix + "pool.maximum-size", 8)));
-        poolConfig.setMinimumIdle(Math.max(0, config.getInt(prefix + "pool.minimum-idle", 2)));
+        int maximumPoolSize = Math.max(2, config.getInt(prefix + "pool.maximum-size", 8));
+        int minimumIdle = Math.min(
+                maximumPoolSize,
+                Math.max(0, config.getInt(prefix + "pool.minimum-idle", 2))
+        );
+        poolConfig.setMaximumPoolSize(maximumPoolSize);
+        poolConfig.setMinimumIdle(minimumIdle);
         poolConfig.setConnectionTimeout(Math.max(250, config.getLong(prefix + "pool.connection-timeout-ms", 10000)));
         poolConfig.setValidationTimeout(Math.max(250, config.getLong(prefix + "pool.validation-timeout-ms", 5000)));
         poolConfig.setMaxLifetime(Math.max(30000, config.getLong(prefix + "pool.max-lifetime-ms", 1800000)));
