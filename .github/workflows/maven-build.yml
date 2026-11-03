@@ -26,3 +26,11 @@ jobs:
           cache: maven
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress clean verify
+      - name: Upload test plugin
+        if: success() && github.ref == 'refs/heads/feature/postgresql-foundation'
+        uses: actions/upload-artifact@v4
+        with:
+          name: SalchichonHardcore-test-${{ github.sha }}
+          path: target/SalchichonHardcore-1.0.0.jar
+          if-no-files-found: error
+          retention-days: 7
