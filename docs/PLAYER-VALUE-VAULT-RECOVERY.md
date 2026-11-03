@@ -73,3 +73,7 @@ The shared persistence contract now includes `flagUncertainVaultClaims()`. On pl
 4. If the recovery sweep fails, plugin startup is aborted rather than allowing uncertain claims to be processed.
 
 The sweep is transactional in both SQLite and PostgreSQL. It does not issue inventory items, infer whether an item reached a player's inventory, or automatically replay a claim. Manual reconciliation and a PDC-backed inventory evidence workflow are still required before withdrawals can be enabled.
+
+## Atomic withdrawal finalization
+
+The SQLite and PostgreSQL adapters finalize the claim row and its corresponding operation row in one database transaction. A claim cannot be reported as delivered while its operation remains `DELIVERY_PENDING`; any mismatch rolls back both state changes. This is database-state atomicity only: it does not make Bukkit inventory delivery exactly-once, which still requires the inventory marker/evidence protocol and manual reconciliation for ambiguous crash windows.
