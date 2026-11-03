@@ -22,6 +22,18 @@ database:
       validation-timeout-ms: 5000
       max-lifetime-ms: 1800000
 
+# Bóveda Player Value: aún no está habilitada hasta completar su lógica y pruebas.
+player-value:
+  enabled: false
+  cooldown-seconds: 5
+  max-stack-size-per-operation: 64
+  allowed-items:
+    DIAMOND: 10
+    EMERALD: 6
+    NETHERITE_INGOT: 100
+    ANCIENT_DEBRIS: 25
+    GOLD_INGOT: 2
+
 season:
   name: "UHC SEASON 1"
   start-date: "2026-10-19"
