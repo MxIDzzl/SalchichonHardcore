@@ -1,6 +1,6 @@
 package com.escuadronsalchichon.hardcore.expansion;
 
-import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
@@ -19,9 +19,9 @@ import java.time.temporal.ChronoUnit;
 public class HardcoreExpansion extends PlaceholderExpansion {
     private final JavaPlugin plugin;
     private final PlayerManager playerManager;
-    private final DatabaseManager databaseManager;
+    private final PlayerDataStore databaseManager;
 
-    public HardcoreExpansion(JavaPlugin plugin, PlayerManager playerManager, DatabaseManager databaseManager) {
+    public HardcoreExpansion(JavaPlugin plugin, PlayerManager playerManager, PlayerDataStore databaseManager) {
         this.plugin = plugin;
         this.playerManager = playerManager;
         this.databaseManager = databaseManager;
