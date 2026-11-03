@@ -38,6 +38,8 @@ Acceptance:
 - Cooldown is configurable and persisted across restart.
 - Every operation has an idempotency key and audit event; crash recovery must reconcile pending deliveries.
 
+Recovery protocol and crash-boundary requirements are specified in [PLAYER-VALUE-VAULT-RECOVERY.md](PLAYER-VALUE-VAULT-RECOVERY.md). This is a design gate only; it does not mean the vault service or GUI exists.
+
 ## 4. Object-for-object trade
 
 - Both players must be online and in the same supported world/session.
