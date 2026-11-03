@@ -1,7 +1,7 @@
 
 package com.escuadronsalchichon.hardcore.manager;
 
-import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -14,11 +14,11 @@ import java.util.UUID;
 public class PlayerManager {
 
     private final JavaPlugin plugin;
-    private final DatabaseManager databaseManager;
+    private final PlayerDataStore databaseManager;
 
     public PlayerManager(
             JavaPlugin plugin,
-            DatabaseManager databaseManager
+            PlayerDataStore databaseManager
     ) {
         this.plugin = plugin;
         this.databaseManager = databaseManager;
