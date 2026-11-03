@@ -253,6 +253,85 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
+
+    @Override
+    public boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate) {
+        if (!isConnected() || uuid == null || blank(username) || deathDate == null) return false;
+        String playerSql = """
+                INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                VALUES (?, ?, ?, 0)
+                ON CONFLICT(uuid) DO UPDATE SET username = EXCLUDED.username, last_death_date = EXCLUDED.last_death_date
+                """;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement(playerSql)) {
+                    player.setObject(1, uuid); player.setString(2, username); player.setObject(3, deathDate); player.executeUpdate();
+                }
+                long previous = 0;
+                try (PreparedStatement query = connection.prepareStatement("SELECT official_deaths FROM player_stats WHERE player_uuid = ? FOR UPDATE")) {
+                    query.setObject(1, uuid);
+                    try (ResultSet result = query.executeQuery()) { if (result.next()) previous = result.getLong(1); }
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, official_deaths, updated_at)
+                        VALUES (?, 1, now())
+                        ON CONFLICT(player_uuid) DO UPDATE SET official_deaths = player_stats.official_deaths + 1, updated_at = now()
+                        """)) { stats.setObject(1, uuid); stats.executeUpdate(); }
+                try (PreparedStatement event = connection.prepareStatement("""
+                        INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
+                        VALUES (?, 'official_deaths', ?, ?, 'SERVER', 'PLAYER_DEATH')
+                        """)) {
+                    event.setObject(1, uuid); event.setLong(2, previous); event.setLong(3, previous + 1); event.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar la muerte oficial de " + username);
+            exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
+        if (!isConnected() || uuid == null || blank(username) || ticks <= 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                        VALUES (?, ?, NULL, 0)
+                        ON CONFLICT(uuid) DO UPDATE SET username = EXCLUDED.username
+                        """)) { player.setObject(1, uuid); player.setString(2, username); player.executeUpdate(); }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, playtime_ticks, updated_at)
+                        VALUES (?, ?, now())
+                        ON CONFLICT(player_uuid) DO UPDATE SET playtime_ticks = player_stats.playtime_ticks + EXCLUDED.playtime_ticks, updated_at = now()
+                        """)) { stats.setObject(1, uuid); stats.setLong(2, ticks); stats.executeUpdate(); }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el tiempo de juego."); exception.printStackTrace(); return false; }
+    }
+
+    @Override
+    public long getOfficialDeaths(UUID uuid) { return getOfficialStat(uuid, "official_deaths"); }
+
+    @Override
+    public long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
+
+    private long getOfficialStat(UUID uuid, String column) {
+        if (!isConnected() || uuid == null) return 0L;
+        if (!column.equals("official_deaths") && !column.equals("playtime_ticks")) throw new IllegalArgumentException("Estadística inválida");
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("SELECT " + column + " FROM player_stats WHERE player_uuid = ?")) {
+            query.setObject(1, uuid);
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo consultar " + column); exception.printStackTrace(); return 0L; }
+    }
+
+
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
