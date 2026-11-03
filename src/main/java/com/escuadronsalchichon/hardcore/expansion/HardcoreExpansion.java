@@ -41,8 +41,8 @@ public class HardcoreExpansion extends PlaceholderExpansion {
                 case "lives" -> playerManager.hasLife(player.getUniqueId()) ? "1" : "0";
                 case "status" -> playerManager.hasLife(player.getUniqueId()) ? "DISPONIBLE" : "SIN VIDAS";
                 case "totems" -> String.valueOf(databaseManager.getTotems(player.getUniqueId()));
-                case "deaths" -> String.valueOf(player.getStatistic(Statistic.DEATHS));
-                case "playtime" -> formatPlaytime(player.getStatistic(Statistic.PLAY_ONE_MINUTE));
+                case "deaths" -> String.valueOf(databaseManager.getOfficialDeaths(player.getUniqueId()));
+                case "playtime" -> formatPlaytime(databaseManager.getPlaytimeTicks(player.getUniqueId()));
                 case "health" -> getHealthValue(player);
                 case "health_display" -> getHealthDisplay(player);
                 case "season" -> plugin.getConfig().getString("season.name", "UHC SEASON 1");
@@ -75,8 +75,8 @@ public class HardcoreExpansion extends PlaceholderExpansion {
         return value;
     }
 
-    private String formatPlaytime(int ticks) {
-        long minutes = Math.max(0, ticks) / 20L / 60L;
+    private String formatPlaytime(long ticks) {
+        long minutes = Math.max(0L, ticks) / 20L / 60L;
         long days = minutes / 1440;
         long hours = (minutes % 1440) / 60;
         long mins = minutes % 60;
