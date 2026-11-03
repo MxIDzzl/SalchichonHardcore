@@ -17,7 +17,7 @@ import java.util.UUID;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
-public class DatabaseManager {
+public class DatabaseManager implements PlayerDataStore {
 
     public boolean resetPlayerCounter(
             UUID targetUuid,
@@ -266,14 +266,14 @@ public class DatabaseManager {
         }
     }
 
-    public int getTotems(UUID uuid) {
+    public long getTotems(UUID uuid) {
         if (!isConnected() || uuid == null) return 0;
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT totem_uses FROM player_data WHERE uuid = ?"
         )) {
             statement.setString(1, uuid.toString());
             try (ResultSet result = statement.executeQuery()) {
-                return result.next() ? result.getInt("totem_uses") : 0;
+                return result.next() ? result.getLong("totem_uses") : 0L;
             }
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo consultar el uso de tótems.");
