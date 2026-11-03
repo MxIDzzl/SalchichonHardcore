@@ -109,44 +109,18 @@ public class PlayerManager {
 
     public boolean registerDeath(Player player) {
         try {
-            UUID uuid = player.getUniqueId();
-
-            PlayerData playerData = databaseManager.getPlayer(uuid);
-
-            if (playerData == null) {
-                plugin.getLogger().severe(
-                        "No se pudo registrar la muerte: jugador inexistente "
-                                + player.getName()
-                );
-
-                return false;
-            }
-
             LocalDate today = LocalDate.now(getTimeZone());
-
-            playerData.setLastDeathDate(today);
-            playerData.setUsername(player.getName());
-
-            if (!databaseManager.savePlayer(playerData)) {
-                throw new IllegalStateException(
-                        "No se pudo guardar la fecha de muerte."
-                );
+            boolean recorded = databaseManager.recordOfficialDeath(
+                    player.getUniqueId(), player.getName(), today
+            );
+            if (recorded) {
+                plugin.getLogger().info(player.getName() + " ha perdido su vida diaria; muerte oficial registrada.");
             }
-
-            plugin.getLogger().info(
-                    player.getName() + " ha perdido su vida diaria."
-            );
-
-            return true;
-
+            return recorded;
         } catch (RuntimeException exception) {
-            plugin.getLogger().severe(
-                    "Error al registrar la muerte de " + player.getName()
-            );
-
+            plugin.getLogger().severe("Error al registrar la muerte de " + player.getName());
             exception.printStackTrace();
-
             return false;
         }
     }
-}
+}}
