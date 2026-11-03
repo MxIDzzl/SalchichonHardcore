@@ -6,6 +6,7 @@ import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerJoinListener;
+import com.escuadronsalchichon.hardcore.listener.TotemListener;
 import com.escuadronsalchichon.hardcore.listener.WorldLoadListener;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.DailyResetManager;
@@ -47,7 +48,7 @@ public class SalchichonHardcore extends JavaPlugin {
         worldRuleManager = new WorldRuleManager();
 
         if (Bukkit.getPluginManager().isPluginEnabled("PlaceholderAPI")) {
-            new HardcoreExpansion(playerManager).register();
+            new HardcoreExpansion(this, playerManager, databaseManager).register();
             getLogger().info("Integración con PlaceholderAPI activada.");
         } else {
             getLogger().warning(
@@ -81,6 +82,7 @@ public class SalchichonHardcore extends JavaPlugin {
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
         );
         getServer().getPluginManager().registerEvents(new FoodListener(), this);
+        getServer().getPluginManager().registerEvents(new TotemListener(databaseManager), this);
 
         getLogger().info("SalchichonHardcore se ha iniciado correctamente.");
     }
