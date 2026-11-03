@@ -36,4 +36,12 @@ public interface PlayerDataStore {
     boolean updateDeathDate(UUID uuid, LocalDate deathDate);
 
     boolean restorePlayerLife(UUID targetUuid, String targetName, String adminName, String reason);
+
+    boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate);
+
+    boolean addPlaytimeTicks(UUID uuid, String username, long ticks);
+
+    long getOfficialDeaths(UUID uuid);
+
+    long getPlaytimeTicks(UUID uuid);
 }
