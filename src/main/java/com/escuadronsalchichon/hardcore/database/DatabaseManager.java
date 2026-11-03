@@ -110,6 +110,13 @@ public class DatabaseManager {
     }
 
     public void resetDeathsBefore(LocalDate today) {
+        if (today == null) {
+            throw new IllegalArgumentException("La fecha actual no puede ser null.");
+        }
+        if (!isConnected()) {
+            throw new IllegalStateException("No hay conexión disponible con SQLite.");
+        }
+
         String sql = """
             UPDATE player_data
             SET last_death_date = NULL
