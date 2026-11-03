@@ -2,6 +2,7 @@ package com.escuadronsalchichon.hardcore.command;
 
 import com.escuadronsalchichon.hardcore.SalchichonHardcore;
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
+import com.escuadronsalchichon.hardcore.database.PostgresDatabaseManager;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
@@ -55,6 +56,36 @@ public class HardcoreCommand implements CommandExecutor {
         if (subcommand.equals("reload")) {
             plugin.reloadPluginConfiguration();
             sender.sendMessage("§aConfiguración de SalchichonHardcore recargada.");
+            return true;
+        }
+
+        if (subcommand.equals("migrate-sqlite")) {
+            if (!(sender instanceof org.bukkit.command.ConsoleCommandSender)) {
+                sender.sendMessage("§cPor seguridad, la migración solo puede ejecutarse desde la consola.");
+                return true;
+            }
+            if (!(databaseManager instanceof PostgresDatabaseManager postgres)) {
+                sender.sendMessage("§cActiva PostgreSQL y reinicia el servidor antes de importar SQLite.");
+                return true;
+            }
+            if (args.length != 2 || !args[1].equalsIgnoreCase("CONFIRM")) {
+                sender.sendMessage("§eUso: hardcore migrate-sqlite CONFIRM");
+                sender.sendMessage("§7Requiere mantenimiento, copia de hardcore.db y PostgreSQL inicializado.");
+                return true;
+            }
+            if (!Bukkit.getOnlinePlayers().isEmpty()) {
+                sender.sendMessage("§cNo puede haber jugadores conectados durante la migración.");
+                return true;
+            }
+            try {
+                var report = postgres.importLegacySqlite();
+                sender.sendMessage("§aImportación completada y verificada.");
+                sender.sendMessage("§7Jugadores: §f" + report.players() + " §7| Auditorías: §f" + report.auditRecords());
+            } catch (Exception exception) {
+                sender.sendMessage("§cLa importación falló y fue revertida. Revisa la consola.");
+                plugin.getLogger().severe("Falló la importación de hardcore.db a PostgreSQL.");
+                exception.printStackTrace();
+            }
             return true;
         }
 
@@ -186,5 +217,6 @@ public class HardcoreCommand implements CommandExecutor {
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
         sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
         sender.sendMessage("§e/hardcore reload");
+        sender.sendMessage("§e/hardcore migrate-sqlite CONFIRM §7(solo consola, mantenimiento)");
     }
 }
