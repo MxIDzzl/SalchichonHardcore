@@ -290,6 +290,54 @@ public class DatabaseManager implements PlayerDataStore {
                     ON trade_escrow_items(recipient_uuid, trade_id) WHERE delivered_at IS NULL
                     """);
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS vault_operations (
+                        operation_id TEXT PRIMARY KEY,
+                        player_uuid TEXT NOT NULL,
+                        operation_type TEXT NOT NULL CHECK (operation_type IN ('DEPOSIT','WITHDRAW')),
+                        status TEXT NOT NULL CHECK (status IN ('PREPARED','COMMITTED','DELIVERY_PENDING','DELIVERED','CANCELLED','RECOVERY_REQUIRED')),
+                        item_id TEXT,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount > 0),
+                        item_payload BLOB NOT NULL,
+                        credited_value INTEGER NOT NULL CHECK (credited_value >= 0),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY(player_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_vault_operations_pending
+                    ON vault_operations(player_uuid, created_at)
+                    WHERE status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED')
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS vault_claims (
+                        claim_id TEXT PRIMARY KEY,
+                        operation_id TEXT NOT NULL UNIQUE,
+                        player_uuid TEXT NOT NULL,
+                        item_payload BLOB NOT NULL,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount > 0),
+                        status TEXT NOT NULL CHECK (status IN ('PENDING','DELIVERING','DELIVERED','RECOVERY_REQUIRED')),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        delivered_at TEXT,
+                        FOREIGN KEY(operation_id) REFERENCES vault_operations(operation_id),
+                        FOREIGN KEY(player_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_vault_claims_player_pending
+                    ON vault_claims(player_uuid, created_at)
+                    WHERE status IN ('PENDING','DELIVERING','RECOVERY_REQUIRED')
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS vault_cooldowns (
+                        player_uuid TEXT PRIMARY KEY,
+                        next_allowed_at TEXT NOT NULL,
+                        FOREIGN KEY(player_uuid) REFERENCES player_data(uuid) ON DELETE CASCADE
+                    )
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS operation_receipts (
                         operation_id TEXT PRIMARY KEY,
                         player_uuid TEXT NOT NULL,
