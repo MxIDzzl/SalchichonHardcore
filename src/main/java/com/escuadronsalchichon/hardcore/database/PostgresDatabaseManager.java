@@ -321,6 +321,47 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     @Override
     public long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
 
+
+    @Override
+    public boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason) {
+        if (!isConnected() || uuid == null || value < 0 || blank(actor) || blank(reason)) return false;
+        String column = switch (statKey == null ? "" : statKey.toLowerCase(java.util.Locale.ROOT)) {
+            case "deaths" -> "official_deaths";
+            case "playtime" -> "playtime_ticks";
+            case "value" -> "player_value";
+            default -> null;
+        };
+        if (column == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                long previous = 0;
+                try (PreparedStatement query = connection.prepareStatement("SELECT " + column + " FROM player_stats WHERE player_uuid = ? FOR UPDATE")) {
+                    query.setObject(1, uuid);
+                    try (ResultSet result = query.executeQuery()) { if (result.next()) previous = result.getLong(1); }
+                }
+                try (PreparedStatement upsert = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, official_deaths, playtime_ticks, player_value, updated_at)
+                        VALUES (?, 0, 0, 0, now())
+                        ON CONFLICT(player_uuid) DO NOTHING
+                        """)) { upsert.setObject(1, uuid); upsert.executeUpdate(); }
+                try (PreparedStatement update = connection.prepareStatement("UPDATE player_stats SET " + column + " = ?, updated_at = now() WHERE player_uuid = ?")) {
+                    update.setLong(1, value); update.setObject(2, uuid);
+                    if (update.executeUpdate() != 1) throw new SQLException("No se actualizó la estadística.");
+                }
+                try (PreparedStatement event = connection.prepareStatement("""
+                        INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """)) {
+                    event.setObject(1, uuid); event.setString(2, column); event.setLong(3, previous);
+                    event.setLong(4, value); event.setString(5, actor); event.setString(6, reason.trim()); event.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo corregir la estadística oficial."); exception.printStackTrace(); return false; }
+    }
+
     private long getOfficialStat(UUID uuid, String column) {
         if (!isConnected() || uuid == null) return 0L;
         if (!column.equals("official_deaths") && !column.equals("playtime_ticks")) throw new IllegalArgumentException("Estadística inválida");
