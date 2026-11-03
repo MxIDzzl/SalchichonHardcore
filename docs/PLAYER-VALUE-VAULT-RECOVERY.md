@@ -62,3 +62,14 @@ The claim marker must be a plugin-owned PDC key and must never be copied from us
 ## Current status
 
 The schema and configuration groundwork exist. The actual vault service, inventory GUI, operation journal adapters, recovery listener, and the tests above are not yet implemented. `player-value.enabled` must remain `false`.
+
+## Startup quarantine implemented
+
+The shared persistence contract now includes `flagUncertainVaultClaims()`. On plugin startup, immediately after schema initialization and before player-facing listeners are registered:
+
+1. Claims left in `DELIVERING` are changed to `RECOVERY_REQUIRED`.
+2. Only the matching withdrawal operations are changed from `DELIVERY_PENDING` to `RECOVERY_REQUIRED`.
+3. The number of quarantined claims is logged.
+4. If the recovery sweep fails, plugin startup is aborted rather than allowing uncertain claims to be processed.
+
+The sweep is transactional in both SQLite and PostgreSQL. It does not issue inventory items, infer whether an item reached a player's inventory, or automatically replay a claim. Manual reconciliation and a PDC-backed inventory evidence workflow are still required before withdrawals can be enabled.
