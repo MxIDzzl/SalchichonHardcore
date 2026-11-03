@@ -237,6 +237,68 @@ public class DatabaseManager implements PlayerDataStore {
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
                     )
                     """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_value_items (
+                        item_id TEXT PRIMARY KEY,
+                        player_uuid TEXT NOT NULL,
+                        material TEXT NOT NULL,
+                        amount INTEGER NOT NULL CHECK (amount > 0),
+                        item_payload BLOB NOT NULL,
+                        credited_value INTEGER NOT NULL CHECK (credited_value >= 0),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid) ON DELETE CASCADE
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_player_value_items_owner
+                    ON player_value_items(player_uuid, created_at, item_id)
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS trade_sessions (
+                        trade_id TEXT PRIMARY KEY,
+                        player_a TEXT NOT NULL,
+                        player_b TEXT NOT NULL,
+                        status TEXT NOT NULL CHECK (status IN ('OPEN','LOCKED','COMMITTED','CANCELLED','EXPIRED','RECOVERY_REQUIRED')),
+                        revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+                        confirmed_revision_a INTEGER,
+                        confirmed_revision_b INTEGER,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        CHECK (player_a <> player_b),
+                        FOREIGN KEY (player_a) REFERENCES player_data(uuid),
+                        FOREIGN KEY (player_b) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS trade_escrow_items (
+                        escrow_item_id TEXT PRIMARY KEY,
+                        trade_id TEXT NOT NULL,
+                        owner_uuid TEXT NOT NULL,
+                        recipient_uuid TEXT NOT NULL,
+                        item_payload BLOB NOT NULL,
+                        item_fingerprint TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        delivered_at TEXT,
+                        CHECK (owner_uuid <> recipient_uuid),
+                        FOREIGN KEY (trade_id) REFERENCES trade_sessions(trade_id),
+                        FOREIGN KEY (owner_uuid) REFERENCES player_data(uuid),
+                        FOREIGN KEY (recipient_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_trade_escrow_pending
+                    ON trade_escrow_items(recipient_uuid, trade_id) WHERE delivered_at IS NULL
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS operation_receipts (
+                        operation_id TEXT PRIMARY KEY,
+                        player_uuid TEXT NOT NULL,
+                        operation_type TEXT NOT NULL,
+                        result_reference TEXT,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
 
             // Migración segura: conserva todos los datos existentes.
             boolean hasTotemUses = false;
