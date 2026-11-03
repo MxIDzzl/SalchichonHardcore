@@ -46,4 +46,14 @@ public interface PlayerDataStore {
     long getPlaytimeTicks(UUID uuid);
 
     boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason);
+
+    boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item);
+
+    java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset);
+
+    long getPlayerValue(UUID uuid);
+
+    boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt);
+
+    java.time.Instant getVaultCooldown(UUID uuid);
 }
