@@ -99,9 +99,6 @@ public class SalchichonHardcore extends JavaPlugin {
 
     public void reloadPluginConfiguration() {
         reloadConfig();
-        if (playtimeTracker != null) {
-            playtimeTracker.shutdown();
-        }
         if (dailyResetManager != null) {
             dailyResetManager.reschedule();
         }
@@ -109,6 +106,9 @@ public class SalchichonHardcore extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (playtimeTracker != null) {
+            playtimeTracker.shutdown();
+        }
         if (dailyResetManager != null) {
             dailyResetManager.cancel();
         }
