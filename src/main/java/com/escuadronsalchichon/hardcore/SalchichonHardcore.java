@@ -75,7 +75,7 @@ public class SalchichonHardcore extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new WorldLoadListener(worldRuleManager), this);
         getServer().getPluginManager().registerEvents(
-                new PlayerJoinListener(playerManager, bossBarManager), this
+                new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
         getServer().getPluginManager().registerEvents(
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
