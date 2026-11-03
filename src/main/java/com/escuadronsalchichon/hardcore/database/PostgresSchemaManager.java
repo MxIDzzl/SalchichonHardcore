@@ -21,7 +21,7 @@ import java.util.List;
  */
 public final class PostgresSchemaManager {
 
-    private static final int CURRENT_SCHEMA_VERSION = 2;
+    private static final int CURRENT_SCHEMA_VERSION = 3;
 
     private final JavaPlugin plugin;
     private final PostgresConnectionPool postgres;
@@ -52,6 +52,11 @@ public final class PostgresSchemaManager {
                 if (installedVersion < 2) {
                     applyStatements(connection, loadStatements("/db/postgresql/schema-v2.sql"));
                     recordVersion(connection, 2);
+                    installedVersion = 2;
+                }
+                if (installedVersion < 3) {
+                    applyStatements(connection, loadStatements("/db/postgresql/schema-v3.sql"));
+                    recordVersion(connection, 3);
                 }
 
                 validateRequiredTables(connection);
