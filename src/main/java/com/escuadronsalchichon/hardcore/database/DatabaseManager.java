@@ -1032,11 +1032,45 @@ public class DatabaseManager implements PlayerDataStore {
     public boolean markVaultClaimDelivering(UUID claimId,UUID playerUuid){return updateVaultClaim(claimId,playerUuid,"PENDING","DELIVERING");}
 
     @Override
-    public boolean markVaultClaimDelivered(UUID claimId,UUID playerUuid){
-        if(!updateVaultClaim(claimId,playerUuid,"DELIVERING","DELIVERED"))return false;
-        try(PreparedStatement s=connection.prepareStatement("UPDATE vault_operations SET status='DELIVERED',updated_at=CURRENT_TIMESTAMP WHERE operation_id=(SELECT operation_id FROM vault_claims WHERE claim_id=?)")){
-            s.setString(1,claimId.toString());s.executeUpdate();return true;
-        }catch(SQLException e){plugin.getLogger().severe("No se pudo cerrar el retiro.");return false;}
+    public synchronized boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid) {
+        if (!isConnected() || claimId == null || playerUuid == null) return false;
+        boolean oldAuto = true;
+        try {
+            oldAuto = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            UUID operationId;
+            try (PreparedStatement update = connection.prepareStatement("""
+                    UPDATE vault_claims SET status='DELIVERED', delivered_at=CURRENT_TIMESTAMP
+                    WHERE claim_id=? AND player_uuid=? AND status='DELIVERING'
+                    """)) {
+                update.setString(1, claimId.toString());
+                update.setString(2, playerUuid.toString());
+                if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (PreparedStatement lookup = connection.prepareStatement("SELECT operation_id FROM vault_claims WHERE claim_id=?")) {
+                lookup.setString(1, claimId.toString());
+                try (ResultSet result = lookup.executeQuery()) {
+                    if (!result.next()) throw new SQLException("No existe la reclamación");
+                    operationId = UUID.fromString(result.getString(1));
+                }
+            }
+            try (PreparedStatement operation = connection.prepareStatement("""
+                    UPDATE vault_operations SET status='DELIVERED', updated_at=CURRENT_TIMESTAMP
+                    WHERE operation_id=? AND status='DELIVERY_PENDING'
+                    """)) {
+                operation.setString(1, operationId.toString());
+                if (operation.executeUpdate() != 1) throw new SQLException("Estado de operación inconsistente");
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudo cerrar atómicamente el retiro.");
+            exception.printStackTrace();
+            return false;
+        } finally {
+            try { connection.setAutoCommit(oldAuto); } catch (SQLException ignored) { }
+        }
     }
 
     private boolean updateVaultClaim(UUID claimId,UUID playerUuid,String from,String to){
