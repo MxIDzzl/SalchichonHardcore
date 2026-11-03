@@ -91,7 +91,7 @@ A feature is releasable only after:
 ## 9. Current state (2026-11-03)
 
 Implemented on `feature/postgresql-foundation`:
-- Versioned PostgreSQL schema with player data, audit, official-stat, and stat-event tables.
+- Versioned PostgreSQL schema v1/v2 with player data, audit, official-stat, stat-event, vault-item, and trade-escrow tables.
 - HikariCP pool and PostgreSQL persistence adapter.
 - SQLite persistence adapter remains available and is still the default.
 - Read-only SQLite importer with transactional target writes and count reconciliation.
@@ -99,10 +99,8 @@ Implemented on `feature/postgresql-foundation`:
 - Shared player persistence interface.
 
 Not implemented/release-ready yet:
-- Official-stat event pipeline and admin correction commands.
-- Durable playtime accumulator.
-- Player Value vault and scoring GUI.
-- Safe item escrow trade.
+- Player Value vault operations, scoring GUI, idempotent deposit/withdrawal recovery (database schema exists only).
+- Safe item escrow trade operations, inventory GUI, and crash-safe delivery reconciliation (database schema exists only).
 - Backend API, license service, web app, and admin panel.
 - End-to-end migration rehearsal, integration tests, and production cutover.
 
