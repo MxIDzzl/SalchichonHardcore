@@ -34,3 +34,7 @@ The player-facing inventory workflow is intentionally not enabled yet. In partic
 - Back up `hardcore.db` before importing legacy data.
 - Run SQLite-to-PostgreSQL migration only during maintenance with no players online.
 - Do not delete the original SQLite database after import until the imported data has been independently checked and backed up.
+
+## Strict deposit policy foundation
+
+The plugin now has a standalone `VaultItemPolicy` that accepts only materials explicitly present in the configured allow-list, rejects air, invalid/oversized stacks, metadata-bearing items, and score multiplication overflow. This is a validation primitive, not an enabled player feature: no Bukkit inventory is removed or delivered by this policy, and `player-value.enabled` remains `false` until the journaled inventory workflow and crash-boundary tests are complete.
