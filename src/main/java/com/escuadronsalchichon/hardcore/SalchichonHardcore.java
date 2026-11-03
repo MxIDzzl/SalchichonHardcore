@@ -13,6 +13,7 @@ import com.escuadronsalchichon.hardcore.listener.WorldLoadListener;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.DailyResetManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
+import com.escuadronsalchichon.hardcore.manager.PlaytimeTracker;
 import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -24,6 +25,7 @@ public class SalchichonHardcore extends JavaPlugin {
     private BossBarManager bossBarManager;
     private WorldRuleManager worldRuleManager;
     private DailyResetManager dailyResetManager;
+    private PlaytimeTracker playtimeTracker;
 
     @Override
     public void onEnable() {
@@ -60,6 +62,10 @@ public class SalchichonHardcore extends JavaPlugin {
             );
         }
 
+        playtimeTracker = new PlaytimeTracker(this, databaseManager);
+        getServer().getPluginManager().registerEvents(playtimeTracker, this);
+        playtimeTracker.start();
+
         dailyResetManager = new DailyResetManager(this, playerManager, bossBarManager);
         dailyResetManager.start();
 
@@ -93,6 +99,9 @@ public class SalchichonHardcore extends JavaPlugin {
 
     public void reloadPluginConfiguration() {
         reloadConfig();
+        if (playtimeTracker != null) {
+            playtimeTracker.shutdown();
+        }
         if (dailyResetManager != null) {
             dailyResetManager.reschedule();
         }
