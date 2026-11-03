@@ -1,6 +1,7 @@
 package com.escuadronsalchichon.hardcore.database;
 
 import org.bukkit.plugin.java.JavaPlugin;
+import org.sqlite.SQLiteConfig;
 
 import java.io.File;
 import java.sql.Connection;
@@ -42,8 +43,13 @@ public final class SqliteToPostgresImporter {
             throw new IllegalArgumentException("La zona horaria de los datos heredados es obligatoria.");
         }
 
-        String sqliteUrl = "jdbc:sqlite:" + sqliteFile.getAbsolutePath() + "?mode=ro";
-        try (Connection source = DriverManager.getConnection(sqliteUrl);
+        // Configure Xerial read-only mode explicitly; do not append URI parameters to the JDBC path.
+        SQLiteConfig sqliteConfig = new SQLiteConfig();
+        sqliteConfig.setReadOnly(true);
+        sqliteConfig.setBusyTimeout(5000);
+
+        String sqliteUrl = "jdbc:sqlite:" + sqliteFile.getAbsolutePath();
+        try (Connection source = DriverManager.getConnection(sqliteUrl, sqliteConfig.toProperties());
              Connection destination = postgres.getConnection()) {
 
             verifySqliteIntegrity(source);
