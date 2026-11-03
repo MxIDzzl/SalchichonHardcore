@@ -25,78 +25,87 @@ public class DatabaseManager {
             String adminName,
             String reason
     ) {
-        if (targetUuid == null
-                || targetName == null
-                || adminName == null
-                || reason == null
-                || reason.isBlank()) {
-            throw new IllegalArgumentException("Los datos del reset no son válidos.");
-        }
-
-        if (connection == null) {
-            throw new IllegalStateException("La base de datos no está conectada.");
+        if (!isConnected()
+                || targetUuid == null
+                || targetName == null || targetName.isBlank()
+                || adminName == null || adminName.isBlank()
+                || reason == null || reason.isBlank()) {
+            return false;
         }
 
         String updateSql = """
-            UPDATE player_data
-            SET last_death_date = NULL
-            WHERE uuid = ?
+            UPDATE player_data SET last_death_date = NULL WHERE uuid = ?
             """;
-
         String auditSql = """
             INSERT INTO admin_audit (
-                target_uuid, target_name, admin_name,
-                action, reason, created_at
+                target_uuid, target_name, admin_name, action, reason, created_at
             ) VALUES (?, ?, ?, ?, ?, ?)
             """;
 
-        boolean originalAutoCommit;
+        boolean originalAutoCommit = true;
+        boolean transactionStarted = false;
 
         try {
             originalAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
+            transactionStarted = true;
 
-            try (PreparedStatement update =
-                         connection.prepareStatement(updateSql);
-                 PreparedStatement audit =
-                         connection.prepareStatement(auditSql)) {
-
+            try (PreparedStatement update = connection.prepareStatement(updateSql)) {
                 update.setString(1, targetUuid.toString());
-
-                if (update.executeUpdate() == 0) {
+                if (update.executeUpdate() != 1) {
                     connection.rollback();
                     return false;
                 }
+            }
 
+            try (PreparedStatement audit = connection.prepareStatement(auditSql)) {
                 audit.setString(1, targetUuid.toString());
                 audit.setString(2, targetName);
                 audit.setString(3, adminName);
                 audit.setString(4, "RESET_COUNTER");
-                audit.setString(5, reason);
-                audit.setString(
-                        6,
-                        LocalDateTime.now(
-                                ZoneId.of("America/Mexico_City")
-                        ).toString()
-                );
-
+                audit.setString(5, reason.trim());
+                audit.setString(6, getAuditTimestamp());
                 audit.executeUpdate();
-                connection.commit();
-                return true;
-
-            } catch (SQLException exception) {
-                connection.rollback();
-                throw exception;
-
-            } finally {
-                connection.setAutoCommit(originalAutoCommit);
             }
 
+            connection.commit();
+            return true;
         } catch (SQLException exception) {
-            throw new IllegalStateException(
-                    "No se pudo reiniciar el contador del jugador.",
-                    exception
+            if (transactionStarted) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackException) {
+                    exception.addSuppressed(rollbackException);
+                }
+            }
+            plugin.getLogger().severe("No se pudo reiniciar el contador de " + targetName);
+            exception.printStackTrace();
+            return false;
+        } finally {
+            if (transactionStarted) {
+                try {
+                    connection.setAutoCommit(originalAutoCommit);
+                } catch (SQLException exception) {
+                    plugin.getLogger().severe("No se pudo restaurar el estado de la transacción SQLite.");
+                    exception.printStackTrace();
+                }
+            }
+        }
+    }
+
+    private String getAuditTimestamp() {
+        String configuredZone = plugin.getConfig().getString(
+                "settings.timezone",
+                "America/Mexico_City"
+        );
+        try {
+            return LocalDateTime.now(ZoneId.of(configuredZone)).toString();
+        } catch (java.time.DateTimeException exception) {
+            plugin.getLogger().warning(
+                    "Zona horaria inválida para auditoría: " + configuredZone
+                            + ". Se utilizará America/Mexico_City."
             );
+            return LocalDateTime.now(ZoneId.of("America/Mexico_City")).toString();
         }
     }
 
@@ -499,9 +508,7 @@ public class DatabaseManager {
 
                 statement.setString(
                         6,
-                        LocalDateTime.now(
-                                ZoneId.of("America/Mexico_City")
-                        ).toString()
+                        getAuditTimestamp()
                 );
 
                 statement.executeUpdate();
