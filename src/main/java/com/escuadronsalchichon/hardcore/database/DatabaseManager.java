@@ -902,6 +902,103 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
+    @Override
+    public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || username == null || username.isBlank()
+                || item == null || !uuid.equals(item.playerUuid()) || item.amount() <= 0
+                || item.creditedValue() < 0) return false;
+        boolean previousAutoCommit = true;
+        try {
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement player = connection.prepareStatement("""
+                    INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                    VALUES (?,?,NULL,0)
+                    ON CONFLICT(uuid) DO UPDATE SET username=excluded.username
+                    """)) {
+                player.setString(1, uuid.toString()); player.setString(2, username); player.executeUpdate();
+            }
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    """)) {
+                insert.setString(1, item.itemId().toString()); insert.setString(2, uuid.toString());
+                insert.setString(3, item.material()); insert.setInt(4, item.amount());
+                insert.setBytes(5, item.payload()); insert.setLong(6, item.creditedValue());
+                insert.setString(7, item.createdAt().toString()); insert.executeUpdate();
+            }
+            try (PreparedStatement stats = connection.prepareStatement("""
+                    INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+excluded.player_value,
+                    updated_at=CURRENT_TIMESTAMP
+                    """)) {
+                stats.setString(1, uuid.toString()); stats.setLong(2, item.creditedValue()); stats.executeUpdate();
+            }
+            connection.commit(); return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudo depositar el objeto en Player Value."); exception.printStackTrace(); return false;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); } catch (SQLException exception) {
+                plugin.getLogger().severe("No se pudo restaurar autocommit tras depósito.");
+            }
+        }
+    }
+
+    @Override
+    public java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset) {
+        if (!isConnected() || uuid == null || limit < 1 || offset < 0) return java.util.List.of();
+        java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
+        try (PreparedStatement query = connection.prepareStatement("""
+                SELECT item_id,material,amount,item_payload,credited_value,created_at
+                FROM player_value_items WHERE player_uuid=? ORDER BY created_at,item_id LIMIT ? OFFSET ?
+                """)) {
+            query.setString(1, uuid.toString()); query.setInt(2, limit); query.setInt(3, offset);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) items.add(new VaultItemRecord(
+                        UUID.fromString(rows.getString("item_id")), uuid, rows.getString("material"),
+                        rows.getInt("amount"), rows.getBytes("item_payload"), rows.getLong("credited_value"),
+                        java.time.Instant.parse(rows.getString("created_at"))));
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | RuntimeException exception) {
+            plugin.getLogger().severe("No se pudo consultar la bóveda Player Value."); exception.printStackTrace();
+            return java.util.List.of();
+        }
+    }
+
+    @Override
+    public long getPlayerValue(UUID uuid) {
+        if (!isConnected() || uuid == null) return 0L;
+        try (PreparedStatement query = connection.prepareStatement("SELECT player_value FROM player_stats WHERE player_uuid=?")) {
+            query.setString(1, uuid.toString());
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo consultar Player Value."); return 0L; }
+    }
+
+    @Override
+    public boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt) {
+        if (!isConnected() || uuid == null || nextAllowedAt == null) return false;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
+                ON CONFLICT(player_uuid) DO UPDATE SET next_allowed_at=excluded.next_allowed_at
+                """)) {
+            statement.setString(1, uuid.toString()); statement.setString(2, nextAllowedAt.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el cooldown de la bóveda."); return false; }
+    }
+
+    @Override
+    public java.time.Instant getVaultCooldown(UUID uuid) {
+        if (!isConnected() || uuid == null) return java.time.Instant.EPOCH;
+        try (PreparedStatement statement = connection.prepareStatement("SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=?")) {
+            statement.setString(1, uuid.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? java.time.Instant.parse(result.getString(1)) : java.time.Instant.EPOCH;
+            }
+        } catch (SQLException | RuntimeException exception) { plugin.getLogger().severe("No se pudo leer el cooldown de la bóveda."); return java.time.Instant.EPOCH; }
+    }
+
     public void disconnect() {
         try {
             if (connection != null && !connection.isClosed()) {
