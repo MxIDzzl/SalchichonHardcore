@@ -1,0 +1,20 @@
+name: SalchichonHardcore
+version: 1.0.0
+main: com.escuadronsalchichon.hardcore.SalchichonHardcore
+api-version: '26.3'
+author: EscuadronSalchichon
+description: Sistema hardcore diario para Escuadron Salchichon.
+
+softdepend:
+  - PlaceholderAPI
+
+commands:
+  hardcore:
+    description: Comandos administrativos de SalchichonHardcore
+    usage: /hardcore <check|restore|reset|reload>
+    permission: salchichonhardcore.admin
+
+permissions:
+  salchichonhardcore.admin:
+    description: Permite administrar SalchichonHardcore
+    default: op

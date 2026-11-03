@@ -1,0 +1,22 @@
+# SalchichonHardcore - Configuracion principal
+
+settings:
+  timezone: "America/Mexico_City"
+  daily-reset: "00:00"
+
+messages:
+  no-permission: "&cNo tienes permiso para utilizar este comando."
+  no-data: "&cNo se encontraron datos de ese jugador."
+  no-life: "&c¡Has perdido tu vida diaria!"
+  return-tomorrow: "&7Podrás regresar mañana a las 00:00."
+  data-error: "&cNo se pudieron cargar tus datos."
+  restore-success: "&a¡Un administrador te ha restaurado tu vida!"
+  reset-success: "&aTu contador de muerte ha sido reiniciado."
+
+bossbar:
+  available:
+    text: "&aVIDA DISPONIBLE"
+    color: GREEN
+  unavailable:
+    text: "&cSIN VIDAS"
+    color: RED
