@@ -1055,6 +1055,34 @@ public class DatabaseManager implements PlayerDataStore {
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
 
+    @Override
+    public synchronized int flagUncertainVaultClaims() {
+        if (!isConnected()) return 0;
+        boolean oldAuto = true;
+        try {
+            oldAuto = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            int changed;
+            try (PreparedStatement claims = connection.prepareStatement(
+                    "UPDATE vault_claims SET status='RECOVERY_REQUIRED' WHERE status='DELIVERING'")) {
+                changed = claims.executeUpdate();
+            }
+            try (PreparedStatement operations = connection.prepareStatement(
+                    "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW'")) {
+                operations.executeUpdate();
+            }
+            connection.commit();
+            return changed;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudieron marcar reclamaciones inciertas para recuperación.");
+            exception.printStackTrace();
+            return -1;
+        } finally {
+            try { connection.setAutoCommit(oldAuto); } catch (SQLException ignored) { }
+        }
+    }
+
     public void disconnect() {
         try {
             if (connection != null && !connection.isClosed()) {
