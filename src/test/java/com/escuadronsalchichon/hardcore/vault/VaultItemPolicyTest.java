@@ -1,7 +1,5 @@
 package com.escuadronsalchichon.hardcore.vault;
 
-import org.bukkit.Material;
-import org.bukkit.inventory.ItemStack;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -10,34 +8,34 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class VaultItemPolicyTest {
     private final VaultItemPolicy policy = new VaultItemPolicy(
-            Map.of(Material.DIAMOND, 10L, Material.EMERALD, 6L), 64);
+            Map.of("DIAMOND", 10L, "EMERALD", 6L), 64);
 
     @Test
     void creditsOnlyConfiguredPlainStacks() {
-        assertEquals(50L, policy.creditFor(new ItemStack(Material.DIAMOND, 5)).orElseThrow());
-        assertTrue(policy.creditFor(new ItemStack(Material.GOLD_INGOT, 1)).isEmpty());
+        assertEquals(50L, policy.creditFor("diamond", 5, 64, false).orElseThrow());
+        assertTrue(policy.creditFor("GOLD_INGOT", 1, 64, false).isEmpty());
     }
 
     @Test
-    void rejectsInvalidAmountsAndOversizedStacks() {
-        assertTrue(policy.creditFor(new ItemStack(Material.DIAMOND, 65)).isEmpty());
-        assertTrue(policy.creditFor(new ItemStack(Material.AIR)).isEmpty());
+    void rejectsInvalidAmountsAndAir() {
+        assertTrue(policy.creditFor("DIAMOND", 65, 64, false).isEmpty());
+        assertTrue(policy.creditFor("AIR", 1, 64, false).isEmpty());
+        assertTrue(policy.creditFor("DIAMOND", 0, 64, false).isEmpty());
+        assertTrue(policy.creditFor("DIAMOND", 2, 1, false).isEmpty());
     }
 
     @Test
     void rejectsMetadataBearingItems() {
-        ItemStack named = new ItemStack(Material.DIAMOND);
-        var meta = named.getItemMeta();
-        meta.setDisplayName("Not a plain diamond");
-        named.setItemMeta(meta);
-        assertTrue(policy.creditFor(named).isEmpty());
+        assertTrue(policy.creditFor("DIAMOND", 1, 64, true).isEmpty());
     }
 
     @Test
     void rejectsInvalidPolicyConfiguration() {
         assertThrows(IllegalArgumentException.class,
-                () -> new VaultItemPolicy(Map.of(Material.DIAMOND, 0L), 64));
+                () -> new VaultItemPolicy(Map.of("DIAMOND", 0L), 64));
         assertThrows(IllegalArgumentException.class,
-                () -> new VaultItemPolicy(Map.of(Material.DIAMOND, 1L), 0));
+                () -> new VaultItemPolicy(Map.of("AIR", 1L), 64));
+        assertThrows(IllegalArgumentException.class,
+                () -> new VaultItemPolicy(Map.of("DIAMOND", 1L), 0));
     }
 }
