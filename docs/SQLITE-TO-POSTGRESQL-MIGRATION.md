@@ -23,14 +23,12 @@
 1. Schedule maintenance and stop the Minecraft server.
 2. Copy `hardcore.db` to a timestamped, read-only backup location. Make a second copy off the active data volume.
 3. Run SQLite integrity check (`PRAGMA integrity_check;`) against the copy. Require result `ok`.
-4. Create a fresh PostgreSQL database and apply `src/main/resources/db/postgresql/schema-v1.sql`.
-5. Export every row from `player_data` and `admin_audit`; preserve UUIDs, names, nullable dates, totem counts, audit IDs, reasons and timestamps.
-6. Convert UUID strings to native UUID, ISO dates to DATE, integer counters to BIGINT, and audit timestamps to TIMESTAMPTZ. Interpret existing local timestamp strings using the configured server timezone; do not blindly assume UTC.
-7. Import within a transaction. Preserve audit IDs and reset identity sequences to the maximum imported ID.
-8. Compare row counts and per-player checksums for all source/destination columns. Require exact match.
-9. Run plugin integration tests against PostgreSQL, including join, death, daily reset, restore, audit insert, totem increment and placeholder reads.
-10. Only after all checks pass, switch the host configuration to PostgreSQL and start the test server.
-11. Keep SQLite backups untouched for rollback. Never run both DBs as independent writable sources.
+4. Create a fresh PostgreSQL database. Enable `database.postgresql.enabled: true` only on the maintenance instance; plugin startup applies the versioned schema automatically.
+5. From the server console, run `hardcore migrate-sqlite CONFIRM`. The command refuses to run if players are online or PostgreSQL is not the active backend.
+6. The importer converts UUIDs, dates, counters and legacy local timestamps using `settings.timezone`, preserves audit IDs, and resets the identity sequence.
+7. It verifies source integrity and destination row counts inside one PostgreSQL transaction; any failure rolls back the import.
+8. Review the console report and perform the integration tests against PostgreSQL: join, death, daily reset, restore, audit insert, totem increment and placeholder reads.
+9. Keep SQLite backups untouched for rollback. Never run both DBs as independent writable sources.
 
 ## Rollback
 
@@ -56,4 +54,4 @@ The newer `player_stats` and `stat_events` tables are not populated by the legac
 
 The importer verifies source integrity and destination row counts and uses one PostgreSQL transaction. It deliberately refuses to import into non-empty destination tables. The source SQLite file is opened read-only. Timestamp strings that cannot be parsed as the legacy `LocalDateTime` representation cause a full rollback and require manual review.
 
-This is a migration building block, not a production cutover command. It still needs integration tests against the exact SQLite JDBC driver and PostgreSQL version used on the host before it can be exposed through an operator command or startup workflow.
+The importer is exposed through the console-only command `hardcore migrate-sqlite CONFIRM`. It is not run at startup. Run it only during maintenance, with a verified backup, no online players, a fresh PostgreSQL destination, and the plugin configured to use PostgreSQL. The command does not delete or modify the SQLite source. A successful import is not by itself permission to reopen the server; complete the integration tests and inspect the report first.
