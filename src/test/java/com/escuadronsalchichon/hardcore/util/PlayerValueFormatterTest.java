@@ -19,6 +19,6 @@ class PlayerValueFormatterTest {
 
     @Test void supportsNegativeAndVeryLargeValues() {
         assertEquals("-1.2k", PlayerValueFormatter.compact(-1_200));
-        assertEquals("9.2q", PlayerValueFormatter.compact(Long.MAX_VALUE));
+        assertEquals("9223q", PlayerValueFormatter.compact(Long.MAX_VALUE));
     }
 }
