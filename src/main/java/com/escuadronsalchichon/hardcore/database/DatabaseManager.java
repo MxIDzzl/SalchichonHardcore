@@ -1068,7 +1068,7 @@ public class DatabaseManager implements PlayerDataStore {
                 changed = claims.executeUpdate();
             }
             try (PreparedStatement operations = connection.prepareStatement(
-                    "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW'")) {
+                    "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
                 operations.executeUpdate();
             }
             connection.commit();
