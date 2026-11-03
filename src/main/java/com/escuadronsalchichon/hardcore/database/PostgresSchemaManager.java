@@ -66,7 +66,17 @@ public final class PostgresSchemaManager {
                 }
                 throw exception;
             } finally {
-                connection.setAutoCommit(originalAutoCommit);
+                try {
+                    connection.setAutoCommit(originalAutoCommit);
+                } catch (SQLException restoreException) {
+                    // Preserve the original migration failure instead of masking it.
+                    if (!connection.isClosed()) {
+                        plugin.getLogger().severe(
+                                "No se pudo restaurar autoCommit después de inicializar el esquema PostgreSQL."
+                        );
+                        plugin.getLogger().severe(restoreException.getMessage());
+                    }
+                }
             }
         }
     }
