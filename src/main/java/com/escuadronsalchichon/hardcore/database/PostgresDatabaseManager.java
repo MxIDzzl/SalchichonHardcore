@@ -52,6 +52,23 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
+    /**
+     * Imports the legacy SQLite file into the already initialized PostgreSQL schema.
+     * This is deliberately an explicit maintenance operation, never a startup action.
+     */
+    public SqliteToPostgresImporter.ImportReport importLegacySqlite() throws SQLException {
+        String configuredZone = plugin.getConfig().getString(
+                "settings.timezone", "America/Mexico_City");
+        final ZoneId zone;
+        try {
+            zone = ZoneId.of(configuredZone);
+        } catch (RuntimeException exception) {
+            throw new SQLException("La zona horaria configurada no es válida: " + configuredZone, exception);
+        }
+        return new SqliteToPostgresImporter(plugin, pool).importDatabase(
+                new java.io.File(plugin.getDataFolder(), "hardcore.db"), zone);
+    }
+
     @Override
     public void disconnect() {
         pool.close();
