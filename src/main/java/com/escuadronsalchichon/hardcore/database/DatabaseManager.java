@@ -19,7 +19,7 @@ import java.time.ZoneId;
 
 public class DatabaseManager implements PlayerDataStore {
 
-    public boolean resetPlayerCounter(
+    public synchronized boolean resetPlayerCounter(
             UUID targetUuid,
             String targetName,
             String adminName,
@@ -109,7 +109,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public void resetDeathsBefore(LocalDate today) {
+    public synchronized void resetDeathsBefore(LocalDate today) {
         if (today == null) {
             throw new IllegalArgumentException("La fecha actual no puede ser null.");
         }
@@ -150,7 +150,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public boolean connect() {
+    public synchronized boolean connect() {
         try {
             if (isConnected()) {
                 return true;
@@ -169,6 +169,10 @@ public class DatabaseManager implements PlayerDataStore {
             String url = "jdbc:sqlite:" + databaseFile.getAbsolutePath();
 
             connection = DriverManager.getConnection(url);
+            try (var pragma = connection.createStatement()) {
+                pragma.execute("PRAGMA foreign_keys = ON");
+                pragma.execute("PRAGMA busy_timeout = 5000");
+            }
 
             plugin.getLogger().info(
                     "Conexion con SQLite establecida."
@@ -185,7 +189,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public boolean createTables() {
+    public synchronized boolean createTables() {
         if (!isConnected()) {
             plugin.getLogger().severe(
                     "No se pueden crear tablas: SQLite no esta conectado."
@@ -379,7 +383,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public boolean incrementTotems(UUID uuid) {
+    public synchronized boolean incrementTotems(UUID uuid) {
         if (!isConnected() || uuid == null) return false;
         String sql = """
                 INSERT INTO player_data (uuid, username, last_death_date, totem_uses)
@@ -397,7 +401,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public long getTotems(UUID uuid) {
+    public synchronized long getTotems(UUID uuid) {
         if (!isConnected() || uuid == null) return 0;
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT totem_uses FROM player_data WHERE uuid = ?"
@@ -413,7 +417,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public boolean savePlayer(PlayerData playerData) {
+    public synchronized boolean savePlayer(PlayerData playerData) {
         if (!isConnected() || playerData == null) {
             plugin.getLogger().severe(
                     "No se pudieron guardar los datos: conexion invalida o jugador nulo."
@@ -457,7 +461,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
-    public PlayerData getPlayer(UUID uuid) {
+    public synchronized PlayerData getPlayer(UUID uuid) {
 
         if (uuid == null) {
             throw new IllegalArgumentException(
@@ -520,7 +524,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public PlayerData getPlayerByName(String username) {
+    public synchronized PlayerData getPlayerByName(String username) {
 
         if (username == null || username.isBlank()) {
             throw new IllegalArgumentException(
@@ -589,7 +593,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
-    public boolean updateDeathDate(UUID uuid, LocalDate deathDate) {
+    public synchronized boolean updateDeathDate(UUID uuid, LocalDate deathDate) {
         if (!isConnected() || uuid == null || deathDate == null) {
             plugin.getLogger().severe(
                     "No se pudo actualizar la fecha: datos invalidos o SQLite desconectado."
@@ -623,7 +627,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
-    public boolean restorePlayerLife(
+    public synchronized boolean restorePlayerLife(
             UUID targetUuid,
             String targetName,
             String adminName,
@@ -747,7 +751,7 @@ public class DatabaseManager implements PlayerDataStore {
 
 
     @Override
-    public boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate) {
+    public synchronized boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate) {
         if (!isConnected() || uuid == null || username == null || username.isBlank() || deathDate == null) return false;
         boolean originalAutoCommit = true;
         try {
@@ -802,7 +806,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
+    public synchronized boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
         if (!isConnected() || uuid == null || username == null || username.isBlank() || ticks <= 0) return false;
         boolean originalAutoCommit = true;
         try {
@@ -841,14 +845,14 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public long getOfficialDeaths(UUID uuid) { return getOfficialStat(uuid, "official_deaths"); }
+    public synchronized long getOfficialDeaths(UUID uuid) { return getOfficialStat(uuid, "official_deaths"); }
 
     @Override
-    public long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
+    public synchronized long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
 
 
     @Override
-    public boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason) {
+    public synchronized boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason) {
         if (!isConnected() || uuid == null || value < 0 || actor == null || actor.isBlank() || reason == null || reason.isBlank()) return false;
         String column = switch (statKey == null ? "" : statKey.toLowerCase(java.util.Locale.ROOT)) {
             case "deaths" -> "official_deaths";
@@ -903,7 +907,7 @@ public class DatabaseManager implements PlayerDataStore {
 
 
     @Override
-    public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
+    public synchronized boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
         if (!isConnected() || uuid == null || username == null || username.isBlank()
                 || item == null || !uuid.equals(item.playerUuid()) || item.amount() <= 0
                 || item.creditedValue() < 0) return false;
@@ -946,7 +950,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset) {
+    public synchronized java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset) {
         if (!isConnected() || uuid == null || limit < 1 || offset < 0) return java.util.List.of();
         java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
         try (PreparedStatement query = connection.prepareStatement("""
@@ -968,7 +972,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public long getPlayerValue(UUID uuid) {
+    public synchronized long getPlayerValue(UUID uuid) {
         if (!isConnected() || uuid == null) return 0L;
         try (PreparedStatement query = connection.prepareStatement("SELECT player_value FROM player_stats WHERE player_uuid=?")) {
             query.setString(1, uuid.toString());
@@ -977,7 +981,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt) {
+    public synchronized boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt) {
         if (!isConnected() || uuid == null || nextAllowedAt == null) return false;
         try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
@@ -989,7 +993,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public java.time.Instant getVaultCooldown(UUID uuid) {
+    public synchronized java.time.Instant getVaultCooldown(UUID uuid) {
         if (!isConnected() || uuid == null) return java.time.Instant.EPOCH;
         try (PreparedStatement statement = connection.prepareStatement("SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=?")) {
             statement.setString(1, uuid.toString());
@@ -1000,7 +1004,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId) {
+    public synchronized VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId) {
         if(!isConnected()||uuid==null||itemId==null)return null;
         boolean oldAuto=true;
         try{
@@ -1029,7 +1033,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public boolean markVaultClaimDelivering(UUID claimId,UUID playerUuid){return updateVaultClaim(claimId,playerUuid,"PENDING","DELIVERING");}
+    public synchronized boolean markVaultClaimDelivering(UUID claimId,UUID playerUuid){return updateVaultClaim(claimId,playerUuid,"PENDING","DELIVERING");}
 
     @Override
     public synchronized boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid) {
@@ -1081,7 +1085,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
+    public synchronized java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
         if(!isConnected()||playerUuid==null)return java.util.List.of();
         java.util.List<VaultClaimRecord> out=new java.util.ArrayList<>();
         try(PreparedStatement s=connection.prepareStatement("SELECT claim_id,operation_id,item_payload,material,amount,status FROM vault_claims WHERE player_uuid=? AND status IN ('PENDING','RECOVERY_REQUIRED') ORDER BY created_at")){
@@ -1117,7 +1121,7 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    public void disconnect() {
+    public synchronized void disconnect() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
