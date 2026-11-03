@@ -999,6 +999,62 @@ public class DatabaseManager implements PlayerDataStore {
         } catch (SQLException | RuntimeException exception) { plugin.getLogger().severe("No se pudo leer el cooldown de la bóveda."); return java.time.Instant.EPOCH; }
     }
 
+    @Override
+    public VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId) {
+        if(!isConnected()||uuid==null||itemId==null)return null;
+        boolean oldAuto=true;
+        try{
+            oldAuto=connection.getAutoCommit();connection.setAutoCommit(false);
+            String material;int amount;byte[] payload;long value;
+            try(PreparedStatement q=connection.prepareStatement("SELECT material,amount,item_payload,credited_value FROM player_value_items WHERE item_id=? AND player_uuid=?")){
+                q.setString(1,itemId.toString());q.setString(2,uuid.toString());
+                try(ResultSet r=q.executeQuery()){if(!r.next()){connection.rollback();return null;}material=r.getString(1);amount=r.getInt(2);payload=r.getBytes(3);value=r.getLong(4);}
+            }
+            try(PreparedStatement d=connection.prepareStatement("DELETE FROM player_value_items WHERE item_id=? AND player_uuid=?")){
+                d.setString(1,itemId.toString());d.setString(2,uuid.toString());if(d.executeUpdate()!=1){connection.rollback();return null;}
+            }
+            try(PreparedStatement s=connection.prepareStatement("UPDATE player_stats SET player_value=player_value-?,updated_at=CURRENT_TIMESTAMP WHERE player_uuid=? AND player_value>=?")){
+                s.setLong(1,value);s.setString(2,uuid.toString());s.setLong(3,value);if(s.executeUpdate()!=1)throw new SQLException("Player Value desincronizado");
+            }
+            UUID op=UUID.randomUUID(),claim=UUID.randomUUID();
+            try(PreparedStatement s=connection.prepareStatement("INSERT INTO vault_operations(operation_id,player_uuid,operation_type,status,item_id,material,amount,item_payload,credited_value) VALUES (?,?,'WITHDRAW','DELIVERY_PENDING',?,?,?,?,?)")){
+                s.setString(1,op.toString());s.setString(2,uuid.toString());s.setString(3,itemId.toString());s.setString(4,material);s.setInt(5,amount);s.setBytes(6,payload);s.setLong(7,value);s.executeUpdate();
+            }
+            try(PreparedStatement s=connection.prepareStatement("INSERT INTO vault_claims(claim_id,operation_id,player_uuid,item_payload,material,amount,status) VALUES (?,?,?,?,?,?,'PENDING')")){
+                s.setString(1,claim.toString());s.setString(2,op.toString());s.setString(3,uuid.toString());s.setBytes(4,payload);s.setString(5,material);s.setInt(6,amount);s.executeUpdate();
+            }
+            connection.commit();return new VaultClaimRecord(claim,op,uuid,material,amount,payload,"PENDING");
+        }catch(SQLException e){try{connection.rollback();}catch(SQLException x){e.addSuppressed(x);}plugin.getLogger().severe("No se pudo crear el retiro.");e.printStackTrace();return null;}
+        finally{try{connection.setAutoCommit(oldAuto);}catch(SQLException ignored){}}
+    }
+
+    @Override
+    public boolean markVaultClaimDelivering(UUID claimId,UUID playerUuid){return updateVaultClaim(claimId,playerUuid,"PENDING","DELIVERING");}
+
+    @Override
+    public boolean markVaultClaimDelivered(UUID claimId,UUID playerUuid){
+        if(!updateVaultClaim(claimId,playerUuid,"DELIVERING","DELIVERED"))return false;
+        try(PreparedStatement s=connection.prepareStatement("UPDATE vault_operations SET status='DELIVERED',updated_at=CURRENT_TIMESTAMP WHERE operation_id=(SELECT operation_id FROM vault_claims WHERE claim_id=?)")){
+            s.setString(1,claimId.toString());s.executeUpdate();return true;
+        }catch(SQLException e){plugin.getLogger().severe("No se pudo cerrar el retiro.");return false;}
+    }
+
+    private boolean updateVaultClaim(UUID claimId,UUID playerUuid,String from,String to){
+        if(!isConnected()||claimId==null||playerUuid==null)return false;
+        try(PreparedStatement s=connection.prepareStatement("UPDATE vault_claims SET status=?,delivered_at=CASE WHEN ?='DELIVERED' THEN CURRENT_TIMESTAMP ELSE delivered_at END WHERE claim_id=? AND player_uuid=? AND status=?")){
+            s.setString(1,to);s.setString(2,to);s.setString(3,claimId.toString());s.setString(4,playerUuid.toString());s.setString(5,from);return s.executeUpdate()==1;
+        }catch(SQLException e){plugin.getLogger().severe("No se pudo actualizar el retiro.");return false;}
+    }
+
+    @Override
+    public java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
+        if(!isConnected()||playerUuid==null)return java.util.List.of();
+        java.util.List<VaultClaimRecord> out=new java.util.ArrayList<>();
+        try(PreparedStatement s=connection.prepareStatement("SELECT claim_id,operation_id,item_payload,material,amount,status FROM vault_claims WHERE player_uuid=? AND status IN ('PENDING','RECOVERY_REQUIRED') ORDER BY created_at")){
+            s.setString(1,playerUuid.toString());try(ResultSet r=s.executeQuery()){while(r.next())out.add(new VaultClaimRecord(UUID.fromString(r.getString(1)),UUID.fromString(r.getString(2)),playerUuid,r.getString(4),r.getInt(5),r.getBytes(3),r.getString(6)));}return java.util.List.copyOf(out);
+        }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
+    }
+
     public void disconnect() {
         try {
             if (connection != null && !connection.isClosed()) {
