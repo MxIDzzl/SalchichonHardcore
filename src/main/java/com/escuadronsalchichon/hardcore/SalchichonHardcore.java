@@ -2,6 +2,8 @@ package com.escuadronsalchichon.hardcore;
 
 import com.escuadronsalchichon.hardcore.command.HardcoreCommand;
 import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
+import com.escuadronsalchichon.hardcore.database.PostgresDatabaseManager;
 import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
@@ -17,7 +19,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 public class SalchichonHardcore extends JavaPlugin {
 
-    private DatabaseManager databaseManager;
+    private PlayerDataStore databaseManager;
     private PlayerManager playerManager;
     private BossBarManager bossBarManager;
     private WorldRuleManager worldRuleManager;
@@ -28,7 +30,9 @@ public class SalchichonHardcore extends JavaPlugin {
         saveDefaultConfig();
         reloadConfig();
 
-        databaseManager = new DatabaseManager(this);
+        databaseManager = getConfig().getBoolean("database.postgresql.enabled", false)
+                ? new PostgresDatabaseManager(this)
+                : new DatabaseManager(this);
 
         if (!databaseManager.connect()) {
             getLogger().severe("El plugin no puede continuar sin la base de datos.");
@@ -108,7 +112,7 @@ public class SalchichonHardcore extends JavaPlugin {
         getLogger().info("SalchichonHardcore se ha detenido correctamente.");
     }
 
-    public DatabaseManager getDatabaseManager() {
+    public PlayerDataStore getDatabaseManager() {
         return databaseManager;
     }
 
