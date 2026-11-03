@@ -390,6 +390,103 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     }
 
 
+    @Override
+    public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || blank(username) || item == null
+                || !uuid.equals(item.playerUuid()) || item.amount() <= 0 || item.creditedValue() < 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                        VALUES (?,?,NULL,0) ON CONFLICT(uuid) DO UPDATE SET username=EXCLUDED.username
+                        """)) {
+                    player.setObject(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                        VALUES (?,?,?,?,?,?,?)
+                        """)) {
+                    insert.setObject(1, item.itemId()); insert.setObject(2, uuid); insert.setString(3, item.material());
+                    insert.setInt(4, item.amount()); insert.setBytes(5, item.payload()); insert.setLong(6, item.creditedValue());
+                    insert.setObject(7, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC"))); insert.executeUpdate();
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+EXCLUDED.player_value,
+                        updated_at=now()
+                        """)) {
+                    stats.setObject(1, uuid); stats.setLong(2, item.creditedValue()); stats.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo depositar el objeto en Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset) {
+        if (!isConnected() || uuid == null || limit < 1 || offset < 0) return java.util.List.of();
+        java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("""
+                     SELECT item_id,material,amount,item_payload,credited_value,created_at
+                     FROM player_value_items WHERE player_uuid=? ORDER BY created_at,item_id LIMIT ? OFFSET ?
+                     """)) {
+            query.setObject(1, uuid); query.setInt(2, limit); query.setInt(3, offset);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) {
+                    OffsetDateTime created = rows.getObject("created_at", OffsetDateTime.class);
+                    items.add(new VaultItemRecord(rows.getObject("item_id", UUID.class), uuid,
+                            rows.getString("material"), rows.getInt("amount"), rows.getBytes("item_payload"),
+                            rows.getLong("credited_value"), created.toInstant()));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar la bóveda Player Value."); exception.printStackTrace();
+            return java.util.List.of();
+        }
+    }
+
+    @Override
+    public long getPlayerValue(UUID uuid) {
+        if (!isConnected() || uuid == null) return 0L;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("SELECT player_value FROM player_stats WHERE player_uuid=?")) {
+            query.setObject(1, uuid);
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo consultar Player Value."); return 0L; }
+    }
+
+    @Override
+    public boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt) {
+        if (!isConnected() || uuid == null || nextAllowedAt == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
+                     ON CONFLICT(player_uuid) DO UPDATE SET next_allowed_at=EXCLUDED.next_allowed_at
+                     """)) {
+            statement.setObject(1, uuid);
+            statement.setObject(2, OffsetDateTime.ofInstant(nextAllowedAt, ZoneId.of("UTC")));
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el cooldown de la bóveda."); return false; }
+    }
+
+    @Override
+    public java.time.Instant getVaultCooldown(UUID uuid) {
+        if (!isConnected() || uuid == null) return java.time.Instant.EPOCH;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=?")) {
+            statement.setObject(1, uuid);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getObject(1, OffsetDateTime.class).toInstant() : java.time.Instant.EPOCH;
+            }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo leer el cooldown de la bóveda."); return java.time.Instant.EPOCH; }
+    }
+
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
