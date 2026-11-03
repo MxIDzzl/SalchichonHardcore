@@ -13,6 +13,15 @@ Player Value is a prestige score backed by items held in a personal vault. It is
   - `%salchichonhardcore_value%`: full integer.
   - `%salchichonhardcore_value_compact%`: compact display (for example `1.2k`, `3.5m`).
 
+Example TAB `groups.yml` entry:
+
+```yaml
+_DEFAULT_:
+  tabprefix: "&7[&d%salchichonhardcore_value_compact%&7] "
+```
+
+This is an example only; merge the prefix into the existing group configuration instead of replacing the server's current TAB setup.
+
 ## Current implementation boundary
 
 The SQLite and PostgreSQL adapters now expose persistent vault-item reads, deposits, score reads, cooldown storage, and transactional withdrawal-claim creation. Withdrawal claims have explicit states and are not automatically replayed after an uncertain delivery.
