@@ -1,8 +1,8 @@
-
 package com.escuadronsalchichon.hardcore.listener;
 
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -25,44 +25,53 @@ public class PlayerDeathListener implements Listener {
         this.bossBarManager = bossBarManager;
     }
 
+    private String message(String path, String fallback) {
+        return ChatColor.translateAlternateColorCodes(
+                '&',
+                plugin.getConfig().getString(path, fallback)
+        );
+    }
+
     @EventHandler
     public void onPlayerDeath(PlayerDeathEvent event) {
-
         Player player = event.getEntity();
 
-        boolean registered = playerManager.registerDeath(player);
-
-        if (!registered) {
-            player.kickPlayer(
-                    "§cNo pudimos registrar tu muerte.\n"
-                            + "§7Contacta a un administrador."
-            );
+        if (!playerManager.registerDeath(player)) {
+            player.kickPlayer(message(
+                    "messages.data-error",
+                    "&cNo se pudo registrar tu muerte. Contacta a un administrador."
+            ));
             return;
         }
 
-        // Mostrar la BossBar roja.
         bossBarManager.showStatus(player, false);
 
-        // Expulsar después de 3 segundos.
-        plugin.getServer().getScheduler().runTaskLater(
-                plugin,
-                () -> {
-                    if (!player.isOnline()) {
-                        return;
-                    }
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) {
+                return;
+            }
 
-                    // Comprobar nuevamente si todavía no tiene vida.
-                    if (playerManager.hasLife(player.getUniqueId())) {
-                        bossBarManager.showStatus(player, true);
-                        return;
-                    }
+            try {
+                if (playerManager.hasLife(player.getUniqueId())) {
+                    bossBarManager.showStatus(player, true);
+                    return;
+                }
 
-                    player.kickPlayer(
-                            "§c¡Has perdido tu vida diaria!\n"
-                                    + "§7Podrás regresar mañana a las 00:00."
-                    );
-                },
-                60L
-        );
+                player.kickPlayer(
+                        message("messages.no-life", "&c¡Has perdido tu vida diaria!")
+                                + "\n"
+                                + message("messages.return-tomorrow", "&7Podrás regresar mañana a las 00:00.")
+                );
+            } catch (RuntimeException exception) {
+                plugin.getLogger().severe(
+                        "No se pudo comprobar el estado de vida de " + player.getName()
+                );
+                exception.printStackTrace();
+                player.kickPlayer(message(
+                        "messages.data-error",
+                        "&cNo se pudieron cargar tus datos."
+                ));
+            }
+        }, 60L);
     }
 }
