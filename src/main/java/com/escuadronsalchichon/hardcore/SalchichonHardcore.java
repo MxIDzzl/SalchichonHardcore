@@ -49,6 +49,18 @@ public class SalchichonHardcore extends JavaPlugin {
             return;
         }
 
+        int uncertainClaims = databaseManager.flagUncertainVaultClaims();
+        if (uncertainClaims < 0) {
+            getLogger().severe("No se pudo completar la revisión de reclamaciones Player Value; el plugin se desactivará por seguridad.");
+            databaseManager.disconnect();
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        if (uncertainClaims > 0) {
+            getLogger().warning("Se aislaron " + uncertainClaims
+                    + " reclamaciones de retiro interrumpidas. No se entregarán automáticamente; requieren revisión.");
+        }
+
         playerManager = new PlayerManager(this, databaseManager);
         bossBarManager = new BossBarManager(this);
         worldRuleManager = new WorldRuleManager();
