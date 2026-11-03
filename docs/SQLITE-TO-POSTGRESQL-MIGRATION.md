@@ -42,3 +42,18 @@ Stop the server, revert the host configuration to the preserved SQLite database 
 - Every source row has a corresponding PostgreSQL row.
 - UUID, username, death date, totem count, audit action/reason/actor and timestamp match.
 - No production cutover occurs until plugin code actually uses the PostgreSQL repository and the integration suite passes.
+
+## Importer implementation status
+
+The code-level importer is `SqliteToPostgresImporter`. It is intentionally not called by plugin startup and does not change the active database. It requires the versioned PostgreSQL schema to have been applied manually to a fresh destination first.
+
+The importer currently transfers only the legacy tables that exist in SQLite:
+
+- `player_data`: UUID, username, nullable death date and totem count.
+- `admin_audit`: original audit ID, target UUID/name, administrator, action, reason and timestamp.
+
+The newer `player_stats` and `stat_events` tables are not populated by the legacy importer because the old SQLite database does not contain equivalent authoritative records. They remain empty until the official-statistics feature is implemented; do not infer historical deaths, playtime or Player Value from unrelated data.
+
+The importer verifies source integrity and destination row counts and uses one PostgreSQL transaction. It deliberately refuses to import into non-empty destination tables. The source SQLite file is opened read-only. Timestamp strings that cannot be parsed as the legacy `LocalDateTime` representation cause a full rollback and require manual review.
+
+This is a migration building block, not a production cutover command. It still needs integration tests against the exact SQLite JDBC driver and PostgreSQL version used on the host before it can be exposed through an operator command or startup workflow.
