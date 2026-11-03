@@ -756,13 +756,18 @@ public class DatabaseManager implements PlayerDataStore {
     @Override
     public boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
         if (!isConnected() || uuid == null || username == null || username.isBlank() || ticks <= 0) return false;
+        boolean originalAutoCommit = true;
         try {
+            originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
             try (PreparedStatement player = connection.prepareStatement("""
                     INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
                     VALUES (?, ?, NULL, 0)
                     ON CONFLICT(uuid) DO UPDATE SET username = excluded.username
                     """)) {
-                player.setString(1, uuid.toString()); player.setString(2, username); player.executeUpdate();
+                player.setString(1, uuid.toString());
+                player.setString(2, username);
+                player.executeUpdate();
             }
             try (PreparedStatement stats = connection.prepareStatement("""
                     INSERT INTO player_stats(player_uuid, playtime_ticks, updated_at)
@@ -771,11 +776,19 @@ public class DatabaseManager implements PlayerDataStore {
                         playtime_ticks = player_stats.playtime_ticks + excluded.playtime_ticks,
                         updated_at = CURRENT_TIMESTAMP
                     """)) {
-                stats.setString(1, uuid.toString()); stats.setLong(2, ticks); return stats.executeUpdate() == 1;
+                stats.setString(1, uuid.toString());
+                stats.setLong(2, ticks);
+                stats.executeUpdate();
             }
+            connection.commit();
+            return true;
         } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
             plugin.getLogger().severe("No se pudo guardar el tiempo de juego de " + username);
-            exception.printStackTrace(); return false;
+            exception.printStackTrace();
+            return false;
+        } finally {
+            try { connection.setAutoCommit(originalAutoCommit); } catch (SQLException ignored) { }
         }
     }
 
