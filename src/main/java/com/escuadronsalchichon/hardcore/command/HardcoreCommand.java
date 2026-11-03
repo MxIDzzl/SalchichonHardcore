@@ -1,7 +1,7 @@
 package com.escuadronsalchichon.hardcore.command;
 
 import com.escuadronsalchichon.hardcore.SalchichonHardcore;
-import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
@@ -17,13 +17,13 @@ import java.util.Locale;
 public class HardcoreCommand implements CommandExecutor {
 
     private final SalchichonHardcore plugin;
-    private final DatabaseManager databaseManager;
+    private final PlayerDataStore databaseManager;
     private final BossBarManager bossBarManager;
     private final PlayerManager playerManager;
 
     public HardcoreCommand(
             SalchichonHardcore plugin,
-            DatabaseManager databaseManager,
+            PlayerDataStore databaseManager,
             BossBarManager bossBarManager,
             PlayerManager playerManager
     ) {
