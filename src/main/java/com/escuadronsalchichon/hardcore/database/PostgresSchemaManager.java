@@ -1,0 +1,153 @@
+package com.escuadronsalchichon.hardcore.database;
+
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Applies the bundled PostgreSQL schema in a single transaction and records
+ * its version. It is intentionally independent from plugin startup for now.
+ */
+public final class PostgresSchemaManager {
+
+    private static final int CURRENT_SCHEMA_VERSION = 1;
+    private static final String SCHEMA_RESOURCE = "/db/postgresql/schema-v1.sql";
+
+    private final JavaPlugin plugin;
+    private final PostgresConnectionPool postgres;
+
+    public PostgresSchemaManager(JavaPlugin plugin, PostgresConnectionPool postgres) {
+        this.plugin = plugin;
+        this.postgres = postgres;
+    }
+
+    public void initialize() throws SQLException {
+        List<String> statements = loadStatements();
+        try (Connection connection = postgres.getConnection()) {
+            boolean originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try {
+                createVersionTable(connection);
+                int installedVersion = getInstalledVersion(connection);
+                if (installedVersion > CURRENT_SCHEMA_VERSION) {
+                    throw new SQLException("La base PostgreSQL usa una versión de esquema más nueva ("
+                            + installedVersion + ") que la soportada por este plugin ("
+                            + CURRENT_SCHEMA_VERSION + ").");
+                }
+
+                if (installedVersion < CURRENT_SCHEMA_VERSION) {
+                    for (String sql : statements) {
+                        try (Statement statement = connection.createStatement()) {
+                            statement.execute(sql);
+                        }
+                    }
+                    recordVersion(connection, CURRENT_SCHEMA_VERSION);
+                }
+
+                validateRequiredTables(connection);
+                connection.commit();
+                plugin.getLogger().info("Esquema PostgreSQL v" + CURRENT_SCHEMA_VERSION + " validado.");
+            } catch (SQLException | RuntimeException exception) {
+                try {
+                    connection.rollback();
+                } catch (SQLException rollbackException) {
+                    exception.addSuppressed(rollbackException);
+                }
+                throw exception;
+            } finally {
+                connection.setAutoCommit(originalAutoCommit);
+            }
+        }
+    }
+
+    private List<String> loadStatements() throws SQLException {
+        InputStream stream = getClass().getResourceAsStream(SCHEMA_RESOURCE);
+        if (stream == null) {
+            throw new SQLException("No se encontró el recurso " + SCHEMA_RESOURCE);
+        }
+
+        StringBuilder sql = new StringBuilder();
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(stream, StandardCharsets.UTF_8))) {
+            String line;
+            while ((line = reader.readLine()) != null) {
+                String trimmed = line.trim();
+                if (trimmed.startsWith("--") || trimmed.isEmpty()) {
+                    continue;
+                }
+                sql.append(line).append('\n');
+            }
+        } catch (IOException exception) {
+            throw new SQLException("No se pudo leer el esquema PostgreSQL.", exception);
+        }
+
+        List<String> statements = new ArrayList<>();
+        for (String part : sql.toString().split(";")) {
+            if (!part.isBlank()) {
+                statements.add(part.trim());
+            }
+        }
+        if (statements.isEmpty()) {
+            throw new SQLException("El esquema PostgreSQL está vacío.");
+        }
+        return statements;
+    }
+
+    private void createVersionTable(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS schema_version (
+                        version INTEGER PRIMARY KEY,
+                        applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+                    )
+                    """);
+        }
+    }
+
+    private int getInstalledVersion(Connection connection) throws SQLException {
+        try (Statement statement = connection.createStatement();
+             ResultSet result = statement.executeQuery(
+                     "SELECT COALESCE(MAX(version), 0) FROM schema_version")) {
+            result.next();
+            return result.getInt(1);
+        }
+    }
+
+    private void recordVersion(Connection connection, int version) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement(
+                "INSERT INTO schema_version (version) VALUES (?)")) {
+            statement.setInt(1, version);
+            statement.executeUpdate();
+        }
+    }
+
+    private void validateRequiredTables(Connection connection) throws SQLException {
+        String[] required = {"player_data", "admin_audit", "player_stats", "stat_events"};
+        for (String table : required) {
+            try (PreparedStatement statement = connection.prepareStatement("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.tables
+                        WHERE table_schema = current_schema() AND table_name = ?
+                    )
+                    """)) {
+                statement.setString(1, table);
+                try (ResultSet result = statement.executeQuery()) {
+                    if (!result.next() || !result.getBoolean(1)) {
+                        throw new SQLException("Falta la tabla requerida en PostgreSQL: " + table);
+                    }
+                }
+            }
+        }
+    }
+}
