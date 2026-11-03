@@ -1,24 +1,25 @@
-
 package com.escuadronsalchichon.hardcore.command;
 
+import com.escuadronsalchichon.hardcore.SalchichonHardcore;
 import com.escuadronsalchichon.hardcore.database.DatabaseManager;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
-
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import com.escuadronsalchichon.hardcore.SalchichonHardcore;
+
+import java.util.Arrays;
+import java.util.Locale;
 
 public class HardcoreCommand implements CommandExecutor {
 
+    private final SalchichonHardcore plugin;
     private final DatabaseManager databaseManager;
     private final BossBarManager bossBarManager;
     private final PlayerManager playerManager;
-    private final SalchichonHardcore plugin;
 
     public HardcoreCommand(
             SalchichonHardcore plugin,
@@ -39,9 +40,8 @@ public class HardcoreCommand implements CommandExecutor {
             String label,
             String[] args
     ) {
-
         if (!sender.hasPermission("salchichonhardcore.admin")) {
-            sender.sendMessage("§cNo tienes permiso para utilizar este comando.");
+            sender.sendMessage(message("messages.no-permission", "&cNo tienes permiso para utilizar este comando."));
             return true;
         }
 
@@ -50,14 +50,11 @@ public class HardcoreCommand implements CommandExecutor {
             return true;
         }
 
-        String subcommand = args[0].toLowerCase();
+        String subcommand = args[0].toLowerCase(Locale.ROOT);
 
         if (subcommand.equals("reload")) {
-
-            plugin.reloadConfig();
-
+            plugin.reloadPluginConfiguration();
             sender.sendMessage("§aConfiguración de SalchichonHardcore recargada.");
-
             return true;
         }
 
@@ -66,142 +63,90 @@ public class HardcoreCommand implements CommandExecutor {
             return true;
         }
 
-        String targetName = args[1];
-
         try {
-            PlayerData target = databaseManager.getPlayerByName(targetName);
-
+            PlayerData target = databaseManager.getPlayerByName(args[1]);
             if (target == null) {
-                sender.sendMessage("§cNo se encontraron datos de ese jugador.");
+                sender.sendMessage(message("messages.no-data", "&cNo se encontraron datos de ese jugador."));
                 return true;
             }
 
             boolean hasLife = playerManager.hasLife(target.getUuid());
 
             switch (subcommand) {
-
                 case "check" -> {
                     sender.sendMessage("§6§lEstado de jugador");
                     sender.sendMessage("§7Jugador: §f" + target.getUsername());
-                    sender.sendMessage(
-                            "§7Estado: " +
-                                    (hasLife ? "§aVIDA DISPONIBLE" : "§cSIN VIDAS")
-                    );
-                    sender.sendMessage(
-                            "§7Última muerte: §f" +
-                                    (target.getLastDeathDate() == null
-                                            ? "Ninguna registrada"
-                                            : target.getLastDeathDate())
-                    );
+                    sender.sendMessage("§7Estado: " + (hasLife ? "§aVIDA DISPONIBLE" : "§cSIN VIDAS"));
+                    sender.sendMessage("§7Última muerte: §f" +
+                            (target.getLastDeathDate() == null ? "Ninguna registrada" : target.getLastDeathDate()));
                 }
-
                 case "restore" -> {
-
                     if (hasLife) {
-                        sender.sendMessage(
-                                "§eEse jugador ya tiene una vida disponible."
-                        );
+                        sender.sendMessage("§eEse jugador ya tiene una vida disponible.");
                         return true;
                     }
-
-                    if (args.length < 3) {
-                        sender.sendMessage(
-                                "§cUso: /hardcore restore <jugador> <motivo>"
-                        );
+                    String reason = getReason(args);
+                    if (reason == null) {
+                        sender.sendMessage("§cUso: /hardcore restore <jugador> <motivo>");
                         return true;
                     }
-
-                    String reason = String.join(
-                            " ",
-                            java.util.Arrays.copyOfRange(args, 2, args.length)
-                    ).trim();
-
-                    if (reason.isBlank()) {
-                        sender.sendMessage("§cDebes especificar un motivo.");
-                        return true;
-                    }
-
                     boolean restored = databaseManager.restorePlayerLife(
-                            target.getUuid(),
-                            target.getUsername(),
-                            sender.getName(),
-                            reason
+                            target.getUuid(), target.getUsername(), sender.getName(), reason
                     );
-
                     if (!restored) {
                         sender.sendMessage("§cNo se pudo restaurar la vida.");
                         return true;
                     }
-
-                    Player onlinePlayer = Bukkit.getPlayer(target.getUuid());
-
-                    if (onlinePlayer != null) {
-                        bossBarManager.showStatus(onlinePlayer, true);
-                        onlinePlayer.sendMessage(
-                                "§a¡Un administrador te ha restaurado tu vida!"
-                        );
-                    }
-
-                    sender.sendMessage(
-                            "§aVida restaurada para §f" + target.getUsername()
-                    );
+                    updateOnlineTarget(target, "§a¡Un administrador te ha restaurado tu vida!");
+                    sender.sendMessage("§aVida restaurada para §f" + target.getUsername());
                     sender.sendMessage("§7Motivo: §f" + reason);
                 }
                 case "reset" -> {
-
-                    if (args.length < 3) {
-                        sender.sendMessage(
-                                "§cUso: /hardcore reset <jugador> <motivo>"
-                        );
+                    String reason = getReason(args);
+                    if (reason == null) {
+                        sender.sendMessage("§cUso: /hardcore reset <jugador> <motivo>");
                         return true;
                     }
-
-                    String reason = String.join(
-                            " ",
-                            java.util.Arrays.copyOfRange(args, 2, args.length)
-                    ).trim();
-
-                    if (reason.isBlank()) {
-                        sender.sendMessage("§cDebes especificar un motivo.");
-                        return true;
-                    }
-
                     boolean reset = databaseManager.resetPlayerCounter(
-                            target.getUuid(),
-                            target.getUsername(),
-                            sender.getName(),
-                            reason
+                            target.getUuid(), target.getUsername(), sender.getName(), reason
                     );
-
                     if (!reset) {
                         sender.sendMessage("§cNo se pudo reiniciar el contador.");
                         return true;
                     }
-
-                    Player onlinePlayer = Bukkit.getPlayer(target.getUuid());
-
-                    if (onlinePlayer != null) {
-                        bossBarManager.showStatus(onlinePlayer, true);
-                        onlinePlayer.sendMessage(
-                                "§aTu contador de muerte ha sido reiniciado por un administrador."
-                        );
-                    }
-
-                    sender.sendMessage(
-                            "§aContador reiniciado para §f" + target.getUsername()
-                    );
+                    updateOnlineTarget(target, "§aTu contador de muerte ha sido reiniciado por un administrador.");
+                    sender.sendMessage("§aContador reiniciado para §f" + target.getUsername());
                     sender.sendMessage("§7Motivo: §f" + reason);
                 }
-
                 default -> sendUsage(sender);
             }
-
         } catch (RuntimeException exception) {
             sender.sendMessage("§cOcurrió un error al ejecutar el comando.");
+            plugin.getLogger().severe("Error al ejecutar /hardcore " + subcommand);
             exception.printStackTrace();
         }
-
         return true;
+    }
+
+    private String message(String path, String fallback) {
+        String value = plugin.getConfig().getString(path, fallback);
+        return org.bukkit.ChatColor.translateAlternateColorCodes('&', value);
+    }
+
+    private String getReason(String[] args) {
+        if (args.length < 3) {
+            return null;
+        }
+        String reason = String.join(" ", Arrays.copyOfRange(args, 2, args.length)).trim();
+        return reason.isBlank() ? null : reason;
+    }
+
+    private void updateOnlineTarget(PlayerData target, String notification) {
+        Player onlinePlayer = Bukkit.getPlayer(target.getUuid());
+        if (onlinePlayer != null) {
+            bossBarManager.showStatus(onlinePlayer, true);
+            onlinePlayer.sendMessage(notification);
+        }
     }
 
     private void sendUsage(CommandSender sender) {
