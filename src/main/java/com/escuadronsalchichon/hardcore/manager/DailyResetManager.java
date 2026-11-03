@@ -39,10 +39,15 @@ public class DailyResetManager {
         scheduleNextReset();
     }
 
-    public void reschedule() {
+    public void cancel() {
         if (resetTask != null) {
             resetTask.cancel();
+            resetTask = null;
         }
+    }
+
+    public void reschedule() {
+        cancel();
         scheduleNextReset();
         refreshOnlinePlayers();
     }
