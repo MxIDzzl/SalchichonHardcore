@@ -217,6 +217,22 @@ public class DatabaseManager {
             statement.executeUpdate(playerTable);
             statement.executeUpdate(auditTable);
 
+            // Migración segura: conserva todos los datos existentes.
+            boolean hasTotemUses = false;
+            try (var columns = statement.executeQuery("PRAGMA table_info(player_data)")) {
+                while (columns.next()) {
+                    if ("totem_uses".equalsIgnoreCase(columns.getString("name"))) {
+                        hasTotemUses = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasTotemUses) {
+                statement.executeUpdate(
+                        "ALTER TABLE player_data ADD COLUMN totem_uses INTEGER NOT NULL DEFAULT 0"
+                );
+            }
+
             plugin.getLogger().info(
                     "Tablas SQLite creadas correctamente."
             );
@@ -229,6 +245,40 @@ public class DatabaseManager {
             );
             exception.printStackTrace();
             return false;
+        }
+    }
+
+    public boolean incrementTotems(UUID uuid) {
+        if (!isConnected() || uuid == null) return false;
+        String sql = """
+                INSERT INTO player_data (uuid, username, last_death_date, totem_uses)
+                VALUES (?, ?, NULL, 1)
+                ON CONFLICT(uuid) DO UPDATE SET totem_uses = player_data.totem_uses + 1;
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, "Unknown");
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar el uso de tótem.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    public int getTotems(UUID uuid) {
+        if (!isConnected() || uuid == null) return 0;
+        try (PreparedStatement statement = connection.prepareStatement(
+                "SELECT totem_uses FROM player_data WHERE uuid = ?"
+        )) {
+            statement.setString(1, uuid.toString());
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getInt("totem_uses") : 0;
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar el uso de tótems.");
+            exception.printStackTrace();
+            return 0;
         }
     }
 
