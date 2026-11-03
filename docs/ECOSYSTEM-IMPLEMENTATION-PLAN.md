@@ -97,6 +97,9 @@ Implemented on `feature/postgresql-foundation`:
 - Read-only SQLite importer with transactional target writes and count reconciliation.
 - Migration runbook and Java 25 Maven CI.
 - Shared player persistence interface.
+- Official deaths persisted transactionally with stat events; periodic monotonic playtime accumulation with flush on quit/shutdown.
+- Audited admin correction command for deaths, playtime ticks, and Player Value (`/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>`).
+- SQLite playtime updates are transactional; SQLite and PostgreSQL schemas include vault/trade persistence foundations.
 
 Not implemented/release-ready yet:
 - Player Value vault operations, scoring GUI, idempotent deposit/withdrawal recovery (database schema exists only).
