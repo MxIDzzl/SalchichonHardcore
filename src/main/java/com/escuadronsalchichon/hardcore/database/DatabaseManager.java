@@ -216,6 +216,27 @@ public class DatabaseManager implements PlayerDataStore {
         try (var statement = connection.createStatement()) {
             statement.executeUpdate(playerTable);
             statement.executeUpdate(auditTable);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_stats (
+                        player_uuid TEXT PRIMARY KEY,
+                        official_deaths INTEGER NOT NULL DEFAULT 0 CHECK (official_deaths >= 0),
+                        playtime_ticks INTEGER NOT NULL DEFAULT 0 CHECK (playtime_ticks >= 0),
+                        player_value INTEGER NOT NULL DEFAULT 0 CHECK (player_value >= 0),
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS stat_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        player_uuid TEXT NOT NULL,
+                        stat_key TEXT NOT NULL,
+                        previous_value INTEGER NOT NULL,
+                        new_value INTEGER NOT NULL,
+                        actor TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
 
             // Migración segura: conserva todos los datos existentes.
             boolean hasTotemUses = false;
@@ -611,6 +632,106 @@ public class DatabaseManager implements PlayerDataStore {
                     exception.printStackTrace();
                 }
             }
+        }
+    }
+
+
+    @Override
+    public boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate) {
+        if (!isConnected() || uuid == null || username == null || username.isBlank() || deathDate == null) return false;
+        boolean originalAutoCommit = true;
+        try {
+            originalAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement player = connection.prepareStatement("""
+                    INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                    VALUES (?, ?, ?, 0)
+                    ON CONFLICT(uuid) DO UPDATE SET username = excluded.username,
+                        last_death_date = excluded.last_death_date
+                    """)) {
+                player.setString(1, uuid.toString());
+                player.setString(2, username);
+                player.setString(3, deathDate.toString());
+                player.executeUpdate();
+            }
+            long previous = 0;
+            try (PreparedStatement query = connection.prepareStatement(
+                    "SELECT official_deaths FROM player_stats WHERE player_uuid = ?")) {
+                query.setString(1, uuid.toString());
+                try (ResultSet result = query.executeQuery()) { if (result.next()) previous = result.getLong(1); }
+            }
+            try (PreparedStatement stats = connection.prepareStatement("""
+                    INSERT INTO player_stats(player_uuid, official_deaths, updated_at)
+                    VALUES (?, 1, CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_uuid) DO UPDATE SET
+                        official_deaths = player_stats.official_deaths + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    """)) {
+                stats.setString(1, uuid.toString());
+                stats.executeUpdate();
+            }
+            try (PreparedStatement event = connection.prepareStatement("""
+                    INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
+                    VALUES (?, 'official_deaths', ?, ?, 'SERVER', 'PLAYER_DEATH')
+                    """)) {
+                event.setString(1, uuid.toString());
+                event.setLong(2, previous);
+                event.setLong(3, previous + 1);
+                event.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudo registrar la muerte oficial de " + username);
+            exception.printStackTrace();
+            return false;
+        } finally {
+            try { connection.setAutoCommit(originalAutoCommit); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
+        if (!isConnected() || uuid == null || username == null || username.isBlank() || ticks <= 0) return false;
+        try {
+            try (PreparedStatement player = connection.prepareStatement("""
+                    INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                    VALUES (?, ?, NULL, 0)
+                    ON CONFLICT(uuid) DO UPDATE SET username = excluded.username
+                    """)) {
+                player.setString(1, uuid.toString()); player.setString(2, username); player.executeUpdate();
+            }
+            try (PreparedStatement stats = connection.prepareStatement("""
+                    INSERT INTO player_stats(player_uuid, playtime_ticks, updated_at)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_uuid) DO UPDATE SET
+                        playtime_ticks = player_stats.playtime_ticks + excluded.playtime_ticks,
+                        updated_at = CURRENT_TIMESTAMP
+                    """)) {
+                stats.setString(1, uuid.toString()); stats.setLong(2, ticks); return stats.executeUpdate() == 1;
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo guardar el tiempo de juego de " + username);
+            exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public long getOfficialDeaths(UUID uuid) { return getOfficialStat(uuid, "official_deaths"); }
+
+    @Override
+    public long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
+
+    private long getOfficialStat(UUID uuid, String column) {
+        if (!isConnected() || uuid == null) return 0L;
+        if (!column.equals("official_deaths") && !column.equals("playtime_ticks")) throw new IllegalArgumentException("Estadística inválida");
+        try (PreparedStatement query = connection.prepareStatement("SELECT " + column + " FROM player_stats WHERE player_uuid = ?")) {
+            query.setString(1, uuid.toString());
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar la estadística oficial " + column);
+            exception.printStackTrace(); return 0L;
         }
     }
 
