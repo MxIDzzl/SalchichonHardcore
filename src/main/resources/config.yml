@@ -4,6 +4,11 @@ settings:
   timezone: "America/Mexico_City"
   daily-reset: "00:00"
 
+season:
+  name: "UHC SEASON 1"
+  start-date: "2026-10-19"
+  difficulty: "HARD"
+
 messages:
   no-permission: "&cNo tienes permiso para utilizar este comando."
   no-data: "&cNo se encontraron datos de ese jugador."
