@@ -523,10 +523,43 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
 
     @Override
     public boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid) {
-        if(!updateClaim(claimId,playerUuid,"DELIVERING","DELIVERED"))return false;
-        try(Connection c=pool.getConnection();PreparedStatement s=c.prepareStatement("UPDATE vault_operations SET status='DELIVERED',updated_at=now() WHERE operation_id=(SELECT operation_id FROM vault_claims WHERE claim_id=?)")){
-            s.setObject(1,claimId);s.executeUpdate();return true;
-        }catch(SQLException e){plugin.getLogger().severe("No se pudo cerrar el retiro.");return false;}
+        if (!isConnected() || claimId == null || playerUuid == null) return false;
+        try (Connection c = pool.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                UUID operationId;
+                try (PreparedStatement update = c.prepareStatement("""
+                        UPDATE vault_claims SET status='DELIVERED', delivered_at=now()
+                        WHERE claim_id=? AND player_uuid=? AND status='DELIVERING'
+                        RETURNING operation_id
+                        """)) {
+                    update.setObject(1, claimId);
+                    update.setObject(2, playerUuid);
+                    try (ResultSet result = update.executeQuery()) {
+                        if (!result.next()) { c.rollback(); return false; }
+                        operationId = result.getObject(1, UUID.class);
+                    }
+                }
+                try (PreparedStatement operation = c.prepareStatement("""
+                        UPDATE vault_operations SET status='DELIVERED', updated_at=now()
+                        WHERE operation_id=? AND status='DELIVERY_PENDING'
+                        """)) {
+                    operation.setObject(1, operationId);
+                    if (operation.executeUpdate() != 1) throw new SQLException("Estado de operación inconsistente");
+                }
+                c.commit();
+                return true;
+            } catch (SQLException exception) {
+                c.rollback();
+                throw exception;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo cerrar atómicamente el retiro.");
+            exception.printStackTrace();
+            return false;
+        }
     }
 
     private boolean updateClaim(UUID claimId,UUID playerUuid,String from,String to){
