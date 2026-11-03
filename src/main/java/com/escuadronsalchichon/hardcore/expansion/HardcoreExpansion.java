@@ -2,6 +2,7 @@ package com.escuadronsalchichon.hardcore.expansion;
 
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
+import com.escuadronsalchichon.hardcore.util.PlayerValueFormatter;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.OfflinePlayer;
@@ -43,6 +44,8 @@ public class HardcoreExpansion extends PlaceholderExpansion {
                 case "totems" -> String.valueOf(databaseManager.getTotems(player.getUniqueId()));
                 case "deaths" -> String.valueOf(databaseManager.getOfficialDeaths(player.getUniqueId()));
                 case "playtime" -> formatPlaytime(databaseManager.getPlaytimeTicks(player.getUniqueId()));
+                case "value" -> String.valueOf(databaseManager.getPlayerValue(player.getUniqueId()));
+                case "value_compact" -> PlayerValueFormatter.compact(databaseManager.getPlayerValue(player.getUniqueId()));
                 case "health" -> getHealthValue(player);
                 case "health_display" -> getHealthDisplay(player);
                 case "season" -> plugin.getConfig().getString("season.name", "UHC SEASON 1");
