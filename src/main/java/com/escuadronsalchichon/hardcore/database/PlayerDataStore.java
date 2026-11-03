@@ -44,4 +44,6 @@ public interface PlayerDataStore {
     long getOfficialDeaths(UUID uuid);
 
     long getPlaytimeTicks(UUID uuid);
+
+    boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason);
 }
