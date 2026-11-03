@@ -73,6 +73,36 @@ public class HardcoreCommand implements CommandExecutor {
             boolean hasLife = playerManager.hasLife(target.getUuid());
 
             switch (subcommand) {
+                case "stat" -> {
+                    if (args.length < 5) {
+                        sender.sendMessage("§cUso: /hardcore stat <jugador> <deaths|playtime|value> <nuevo_valor> <motivo>");
+                        return true;
+                    }
+                    long value;
+                    try {
+                        value = Long.parseLong(args[3]);
+                        if (value < 0) throw new NumberFormatException();
+                    } catch (NumberFormatException invalid) {
+                        sender.sendMessage("§cEl valor debe ser un entero mayor o igual a cero.");
+                        return true;
+                    }
+                    String statKey = args[2].toLowerCase(Locale.ROOT);
+                    if (!java.util.Set.of("deaths", "playtime", "value").contains(statKey)) {
+                        sender.sendMessage("§cEstadística válida: deaths, playtime (ticks) o value.");
+                        return true;
+                    }
+                    String reason = String.join(" ", Arrays.copyOfRange(args, 4, args.length)).trim();
+                    if (reason.isBlank()) {
+                        sender.sendMessage("§cDebes indicar un motivo.");
+                        return true;
+                    }
+                    if (!databaseManager.setOfficialStat(target.getUuid(), statKey, value, sender.getName(), reason)) {
+                        sender.sendMessage("§cNo se pudo corregir la estadística. Revisa los datos y la consola.");
+                        return true;
+                    }
+                    sender.sendMessage("§aEstadística §f" + statKey + " §aactualizada para §f" + target.getUsername());
+                    sender.sendMessage("§7Nuevo valor: §f" + value + " §8| §7Motivo: §f" + reason);
+                }
                 case "check" -> {
                     sender.sendMessage("§6§lEstado de jugador");
                     sender.sendMessage("§7Jugador: §f" + target.getUsername());
@@ -154,6 +184,7 @@ public class HardcoreCommand implements CommandExecutor {
         sender.sendMessage("§e/hardcore check <jugador>");
         sender.sendMessage("§e/hardcore restore <jugador> <motivo>");
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
+        sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
         sender.sendMessage("§e/hardcore reload");
     }
 }
