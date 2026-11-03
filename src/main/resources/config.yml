@@ -4,6 +4,24 @@ settings:
   timezone: "America/Mexico_City"
   daily-reset: "00:00"
 
+# PostgreSQL queda preparado pero DESACTIVADO.
+# El plugin seguirá usando hardcore.db hasta completar y verificar el importador.
+# Define SALCHICHON_DB_USER y SALCHICHON_DB_PASSWORD en el entorno del servidor.
+database:
+  postgresql:
+    enabled: false
+    host: "127.0.0.1"
+    port: 5432
+    database: "salchichon"
+    username-env: "SALCHICHON_DB_USER"
+    password-env: "SALCHICHON_DB_PASSWORD"
+    pool:
+      maximum-size: 8
+      minimum-idle: 2
+      connection-timeout-ms: 10000
+      validation-timeout-ms: 5000
+      max-lifetime-ms: 1800000
+
 season:
   name: "UHC SEASON 1"
   start-date: "2026-10-19"
@@ -15,7 +33,7 @@ messages:
   no-life: "&c¡Has perdido tu vida diaria!"
   return-tomorrow: "&7Podrás regresar mañana a las 00:00."
   data-error: "&cNo se pudieron cargar tus datos."
-  restore-success: "&a¡Un administrador te ha restaurado tu vida!"
+  restore-success: "&a¡Un administrador te ha restaurado su vida!"
   reset-success: "&aTu contador de muerte ha sido reiniciado."
 
 bossbar:
