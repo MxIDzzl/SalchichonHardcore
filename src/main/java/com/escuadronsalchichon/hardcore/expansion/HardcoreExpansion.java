@@ -92,7 +92,7 @@ public class HardcoreExpansion extends PlaceholderExpansion {
             LocalDate startDate = LocalDate.parse(start);
             LocalDate today = LocalDate.now(ZoneId.of(zoneName));
             return String.valueOf(Math.max(1, ChronoUnit.DAYS.between(startDate, today) + 1));
-        } catch (DateTimeParseException | java.time.DateTimeException exception) {
+        } catch (java.time.DateTimeException exception) {
             return "1";
         }
     }
