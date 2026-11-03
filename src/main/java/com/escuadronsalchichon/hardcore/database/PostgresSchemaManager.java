@@ -21,8 +21,7 @@ import java.util.List;
  */
 public final class PostgresSchemaManager {
 
-    private static final int CURRENT_SCHEMA_VERSION = 1;
-    private static final String SCHEMA_RESOURCE = "/db/postgresql/schema-v1.sql";
+    private static final int CURRENT_SCHEMA_VERSION = 2;
 
     private final JavaPlugin plugin;
     private final PostgresConnectionPool postgres;
@@ -33,7 +32,6 @@ public final class PostgresSchemaManager {
     }
 
     public void initialize() throws SQLException {
-        List<String> statements = loadStatements();
         try (Connection connection = postgres.getConnection()) {
             boolean originalAutoCommit = connection.getAutoCommit();
             connection.setAutoCommit(false);
@@ -46,13 +44,14 @@ public final class PostgresSchemaManager {
                             + CURRENT_SCHEMA_VERSION + ").");
                 }
 
-                if (installedVersion < CURRENT_SCHEMA_VERSION) {
-                    for (String sql : statements) {
-                        try (Statement statement = connection.createStatement()) {
-                            statement.execute(sql);
-                        }
-                    }
-                    recordVersion(connection, CURRENT_SCHEMA_VERSION);
+                if (installedVersion < 1) {
+                    applyStatements(connection, loadStatements("/db/postgresql/schema-v1.sql"));
+                    recordVersion(connection, 1);
+                    installedVersion = 1;
+                }
+                if (installedVersion < 2) {
+                    applyStatements(connection, loadStatements("/db/postgresql/schema-v2.sql"));
+                    recordVersion(connection, 2);
                 }
 
                 validateRequiredTables(connection);
@@ -81,10 +80,16 @@ public final class PostgresSchemaManager {
         }
     }
 
-    private List<String> loadStatements() throws SQLException {
-        InputStream stream = getClass().getResourceAsStream(SCHEMA_RESOURCE);
+    private void applyStatements(Connection connection, List<String> statements) throws SQLException {
+        for (String sql : statements) {
+            try (Statement statement = connection.createStatement()) { statement.execute(sql); }
+        }
+    }
+
+    private List<String> loadStatements(String resource) throws SQLException {
+        InputStream stream = getClass().getResourceAsStream(resource);
         if (stream == null) {
-            throw new SQLException("No se encontró el recurso " + SCHEMA_RESOURCE);
+            throw new SQLException("No se encontró el recurso " + resource);
         }
 
         StringBuilder sql = new StringBuilder();
