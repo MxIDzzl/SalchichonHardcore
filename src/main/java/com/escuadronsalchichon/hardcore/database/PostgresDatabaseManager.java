@@ -545,6 +545,36 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
 
+    @Override
+    public int flagUncertainVaultClaims() {
+        if (!isConnected()) return -1;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int changed;
+                try (PreparedStatement claims = connection.prepareStatement(
+                        "UPDATE vault_claims SET status='RECOVERY_REQUIRED' WHERE status='DELIVERING'")) {
+                    changed = claims.executeUpdate();
+                }
+                try (PreparedStatement operations = connection.prepareStatement(
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW'")) {
+                    operations.executeUpdate();
+                }
+                connection.commit();
+                return changed;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron marcar reclamaciones inciertas para recuperación.");
+            exception.printStackTrace();
+            return -1;
+        }
+    }
+
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
