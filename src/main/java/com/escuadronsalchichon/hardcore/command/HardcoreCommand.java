@@ -80,7 +80,7 @@ public class HardcoreCommand implements CommandExecutor {
             try {
                 var report = postgres.importLegacySqlite();
                 sender.sendMessage("§aImportación completada y verificada.");
-                sender.sendMessage("§7Jugadores: §f" + report.players() + " §7| Auditorías: §f" + report.auditRecords());
+                sender.sendMessage("§7Jugadores: §f" + report.playersImported() + " §7| Auditorías: §f" + report.auditRowsImported());
             } catch (Exception exception) {
                 sender.sendMessage("§cLa importación falló y fue revertida. Revisa la consola.");
                 plugin.getLogger().severe("Falló la importación de hardcore.db a PostgreSQL.");
