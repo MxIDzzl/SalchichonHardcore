@@ -64,4 +64,6 @@ public interface PlayerDataStore {
     boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid);
 
     java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid);
+
+    int flagUncertainVaultClaims();
 }
