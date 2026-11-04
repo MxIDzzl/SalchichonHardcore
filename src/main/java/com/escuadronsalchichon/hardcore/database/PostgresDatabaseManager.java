@@ -734,7 +734,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public int flagUncertainVaultClaims() {
+    public int flagUncertainVaultOperations() {
         if (!isConnected()) return -1;
         try (Connection connection = pool.getConnection()) {
             connection.setAutoCommit(false);
