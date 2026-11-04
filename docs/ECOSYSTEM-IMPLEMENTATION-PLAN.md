@@ -93,7 +93,7 @@ A feature is releasable only after:
 ## 9. Current state (2026-11-03)
 
 Implemented on `feature/postgresql-foundation`:
-- Versioned PostgreSQL schema v1/v2/v3 with player data, audit, official-stat, stat-event, vault-item, trade-escrow, recoverable vault-operation, pending-claim, and cooldown tables.
+- Versioned PostgreSQL schema v1-v4 with player data, audit, official-stat, stat-event, vault-item, trade-escrow, recoverable vault-operation, pending-claim, cooldown, and manual Player Value adjustment-ledger tables.
 - HikariCP pool and PostgreSQL persistence adapter.
 - SQLite persistence adapter remains available and is still the default; it has matching vault recovery tables.
 - Read-only SQLite importer with transactional target writes and count reconciliation.
@@ -101,6 +101,9 @@ Implemented on `feature/postgresql-foundation`:
 - Shared player persistence interface.
 - Official deaths persisted transactionally with stat events; periodic monotonic playtime accumulation with flush on quit/shutdown.
 - Audited admin correction command for deaths, playtime ticks, and Player Value (`/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>`).
+- `/hardcore check <jugador>` now displays official deaths, persisted playtime, and Player Value alongside life status.
+- Shared tick-based playtime formatter with unit tests; Maven CI runs on each branch commit.
+- Backend API v1 contract and public website/admin frontend contract documented; these are specifications, not deployed services.
 - SQLite playtime updates are transactional; SQLite and PostgreSQL schemas include vault/trade persistence foundations.
 
 Not implemented/release-ready yet:
