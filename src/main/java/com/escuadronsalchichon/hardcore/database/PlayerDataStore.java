@@ -74,5 +74,5 @@ public interface PlayerDataStore {
 
     java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid);
 
-    int flagUncertainVaultClaims();
+    int flagUncertainVaultOperations();
 }
