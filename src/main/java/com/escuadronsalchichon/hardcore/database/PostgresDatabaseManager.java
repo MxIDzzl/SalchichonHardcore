@@ -748,6 +748,12 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                         "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
                     operations.executeUpdate();
                 }
+                // A PREPARED deposit may have stopped before or after inventory
+                // mutation. Quarantine it until an inventory-aware recovery can prove its state.
+                try (PreparedStatement deposits = connection.prepareStatement(
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE operation_type='DEPOSIT' AND status='PREPARED'")) {
+                    changed += deposits.executeUpdate();
+                }
                 connection.commit();
                 return changed;
             } catch (SQLException exception) {
