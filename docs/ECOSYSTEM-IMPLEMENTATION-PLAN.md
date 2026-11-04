@@ -121,3 +121,6 @@ Do not enable PostgreSQL or advertise any not-implemented feature as available u
 - Startup quarantines abandoned `DEPOSIT/PREPARED` operations as `RECOVERY_REQUIRED`, preventing blind replay or cancellation.
 - An unverified cancellation API was intentionally removed; no code may cancel an operation until inventory evidence is available.
 - Still outstanding: Bukkit inventory adapter, PDC marker/fingerprint, cooldown in the same transaction, inventory-aware recovery/reconciliation, and crash-boundary integration tests. Player Value remains disabled.
+
+
+- 2026-11-04: la confirmación de depósitos ahora rechaza desbordamientos del agregado Player Value `BIGINT` en SQLite y PostgreSQL; la transacción completa se revierte si no puede actualizar exactamente una fila.
