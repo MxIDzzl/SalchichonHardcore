@@ -77,3 +77,19 @@ The sweep is transactional in both SQLite and PostgreSQL. It does not issue inve
 ## Atomic withdrawal finalization
 
 The SQLite and PostgreSQL adapters finalize the claim row and its corresponding operation row in one database transaction. A claim cannot be reported as delivered while its operation remains `DELIVERY_PENDING`; any mismatch rolls back both state changes. This is database-state atomicity only: it does not make Bukkit inventory delivery exactly-once, which still requires the inventory marker/evidence protocol and manual reconciliation for ambiguous crash windows.
+
+
+## Deposit persistence ledger (implemented groundwork)
+
+Both SQLite and PostgreSQL now insert a `vault_operations` row with status
+`COMMITTED` in the same SQL transaction as the vault item and aggregate
+Player Value update. The operation UUID is the vault item UUID, so a repeated
+insert cannot silently credit the same item twice: the primary-key conflict
+rolls back the whole transaction.
+
+This is a post-inventory finalization primitive only. It is **not** the
+PREPARED-before-inventory-mutation protocol described above. No caller may
+remove an item and then rely on this method as crash-safe delivery. The
+inventory marker, PREPARED journal transition, atomic cooldown update,
+per-player unresolved-operation lock, and reconciliation service remain
+unimplemented. Keep `player-value.enabled: false`.
