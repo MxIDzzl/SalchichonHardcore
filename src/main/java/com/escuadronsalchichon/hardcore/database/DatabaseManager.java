@@ -1283,7 +1283,7 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public synchronized int flagUncertainVaultClaims() {
+    public synchronized int flagUncertainVaultOperations() {
         if (!isConnected()) return 0;
         boolean oldAuto = true;
         try {
