@@ -631,32 +631,111 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId) {
-        if (!isConnected() || uuid == null || itemId == null) return null;
-        try (Connection c = pool.getConnection()) {
-            c.setAutoCommit(false);
+    public VaultClaimRecord createVaultWithdrawal(
+            UUID uuid, UUID itemId, java.time.Instant now, java.time.Instant nextAllowedAt
+    ) {
+        if (!isConnected() || uuid == null || itemId == null || now == null
+                || nextAllowedAt == null || nextAllowedAt.isBefore(now)) return null;
+
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
             try {
-                String material; int amount; byte[] payload; long value;
-                try (PreparedStatement q = c.prepareStatement("SELECT material,amount,item_payload,credited_value FROM player_value_items WHERE item_id=? AND player_uuid=? FOR UPDATE")) {
-                    q.setObject(1,itemId); q.setObject(2,uuid);
-                    try (ResultSet r=q.executeQuery()) { if(!r.next()){c.rollback();return null;} material=r.getString(1);amount=r.getInt(2);payload=r.getBytes(3);value=r.getLong(4); }
+                try (PreparedStatement cooldown = connection.prepareStatement(
+                        "SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=? FOR UPDATE")) {
+                    cooldown.setObject(1, uuid);
+                    try (ResultSet result = cooldown.executeQuery()) {
+                        if (result.next()) {
+                            java.time.Instant allowedAt = result.getObject(1, OffsetDateTime.class).toInstant();
+                            if (now.isBefore(allowedAt)) {
+                                connection.rollback();
+                                return null;
+                            }
+                        }
+                    }
                 }
-                try (PreparedStatement d=c.prepareStatement("DELETE FROM player_value_items WHERE item_id=? AND player_uuid=?")) {
-                    d.setObject(1,itemId);d.setObject(2,uuid);if(d.executeUpdate()!=1){c.rollback();return null;}
+
+                String material;
+                int amount;
+                byte[] payload;
+                long value;
+                try (PreparedStatement query = connection.prepareStatement(
+                        "SELECT material,amount,item_payload,credited_value FROM player_value_items WHERE item_id=? AND player_uuid=? FOR UPDATE")) {
+                    query.setObject(1, itemId);
+                    query.setObject(2, uuid);
+                    try (ResultSet result = query.executeQuery()) {
+                        if (!result.next()) {
+                            connection.rollback();
+                            return null;
+                        }
+                        material = result.getString(1);
+                        amount = result.getInt(2);
+                        payload = result.getBytes(3);
+                        value = result.getLong(4);
+                    }
                 }
-                try (PreparedStatement s=c.prepareStatement("UPDATE player_stats SET player_value=player_value-?,updated_at=now() WHERE player_uuid=? AND player_value>=?")) {
-                    s.setLong(1,value);s.setObject(2,uuid);s.setLong(3,value);if(s.executeUpdate()!=1)throw new SQLException("Player Value desincronizado");
+
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM player_value_items WHERE item_id=? AND player_uuid=?")) {
+                    delete.setObject(1, itemId);
+                    delete.setObject(2, uuid);
+                    if (delete.executeUpdate() != 1) {
+                        connection.rollback();
+                        return null;
+                    }
                 }
-                UUID op=UUID.randomUUID(),claim=UUID.randomUUID();
-                try(PreparedStatement s=c.prepareStatement("INSERT INTO vault_operations(operation_id,player_uuid,operation_type,status,item_id,material,amount,item_payload,credited_value) VALUES (?,?,'WITHDRAW','DELIVERY_PENDING',?,?,?,?,?)")){
-                    s.setObject(1,op);s.setObject(2,uuid);s.setObject(3,itemId);s.setString(4,material);s.setInt(5,amount);s.setBytes(6,payload);s.setLong(7,value);s.executeUpdate();
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE player_stats SET player_value=player_value-?,updated_at=now() WHERE player_uuid=? AND player_value>=?")) {
+                    update.setLong(1, value);
+                    update.setObject(2, uuid);
+                    update.setLong(3, value);
+                    if (update.executeUpdate() != 1) throw new SQLException("Player Value desincronizado");
                 }
-                try(PreparedStatement s=c.prepareStatement("INSERT INTO vault_claims(claim_id,operation_id,player_uuid,item_payload,material,amount,status) VALUES (?,?,?,?,?,?,'PENDING')")){
-                    s.setObject(1,claim);s.setObject(2,op);s.setObject(3,uuid);s.setBytes(4,payload);s.setString(5,material);s.setInt(6,amount);s.executeUpdate();
+
+                UUID operationId = UUID.randomUUID();
+                UUID claimId = UUID.randomUUID();
+                try (PreparedStatement operation = connection.prepareStatement(
+                        "INSERT INTO vault_operations(operation_id,player_uuid,operation_type,status,item_id,material,amount,item_payload,credited_value) VALUES (?,?,'WITHDRAW','DELIVERY_PENDING',?,?,?,?,?)")) {
+                    operation.setObject(1, operationId);
+                    operation.setObject(2, uuid);
+                    operation.setObject(3, itemId);
+                    operation.setString(4, material);
+                    operation.setInt(5, amount);
+                    operation.setBytes(6, payload);
+                    operation.setLong(7, value);
+                    operation.executeUpdate();
                 }
-                c.commit();return new VaultClaimRecord(claim,op,uuid,material,amount,payload,"PENDING");
-            } catch(SQLException e){c.rollback();throw e;} finally{c.setAutoCommit(true);}
-        } catch(SQLException e){plugin.getLogger().severe("No se pudo crear el retiro de Player Value.");e.printStackTrace();return null;}
+                try (PreparedStatement claim = connection.prepareStatement(
+                        "INSERT INTO vault_claims(claim_id,operation_id,player_uuid,item_payload,material,amount,status) VALUES (?,?,?,?,?,?,'PENDING')")) {
+                    claim.setObject(1, claimId);
+                    claim.setObject(2, operationId);
+                    claim.setObject(3, uuid);
+                    claim.setBytes(4, payload);
+                    claim.setString(5, material);
+                    claim.setInt(6, amount);
+                    claim.executeUpdate();
+                }
+                try (PreparedStatement cooldown = connection.prepareStatement("""
+                        INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
+                        ON CONFLICT(player_uuid) DO UPDATE SET next_allowed_at=EXCLUDED.next_allowed_at
+                        """)) {
+                    cooldown.setObject(1, uuid);
+                    cooldown.setObject(2, OffsetDateTime.ofInstant(nextAllowedAt, ZoneId.of("UTC")));
+                    cooldown.executeUpdate();
+                }
+
+                connection.commit();
+                return new VaultClaimRecord(claimId, operationId, uuid, material, amount, payload, "PENDING");
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException | java.time.DateTimeException exception) {
+            plugin.getLogger().severe("No se pudo crear el retiro de Player Value.");
+            exception.printStackTrace();
+            return null;
+        }
     }
 
     @Override
