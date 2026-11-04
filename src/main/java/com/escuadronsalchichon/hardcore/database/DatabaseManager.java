@@ -1210,7 +1210,28 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
     @Override
-    public synchronized boolean markVaultClaimDelivering(UUID claimId,UUID playerUuid){return updateVaultClaim(claimId,playerUuid,"PENDING","DELIVERING");}
+    public synchronized boolean markVaultClaimDelivering(UUID claimId, UUID playerUuid) {
+        if (!isConnected() || claimId == null || playerUuid == null) return false;
+        String sql = """
+                UPDATE vault_claims
+                SET status='DELIVERING'
+                WHERE claim_id=? AND player_uuid=? AND status='PENDING'
+                  AND EXISTS (
+                      SELECT 1 FROM vault_operations
+                      WHERE vault_operations.operation_id=vault_claims.operation_id
+                        AND vault_operations.player_uuid=? AND vault_operations.status='DELIVERY_PENDING'
+                  )
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, claimId.toString());
+            statement.setString(2, playerUuid.toString());
+            statement.setString(3, playerUuid.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo iniciar la entrega del retiro.");
+            return false;
+        }
+    }
 
     @Override
     public synchronized boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid) {
@@ -1265,7 +1286,7 @@ public class DatabaseManager implements PlayerDataStore {
     public synchronized java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
         if(!isConnected()||playerUuid==null)return java.util.List.of();
         java.util.List<VaultClaimRecord> out=new java.util.ArrayList<>();
-        try(PreparedStatement s=connection.prepareStatement("SELECT claim_id,operation_id,item_payload,material,amount,status FROM vault_claims WHERE player_uuid=? AND status IN ('PENDING','RECOVERY_REQUIRED') ORDER BY created_at")){
+        try(PreparedStatement s=connection.prepareStatement("SELECT claim_id,operation_id,item_payload,material,amount,status FROM vault_claims WHERE player_uuid=? AND status='PENDING' ORDER BY created_at")){
             s.setString(1,playerUuid.toString());try(ResultSet r=s.executeQuery()){while(r.next())out.add(new VaultClaimRecord(UUID.fromString(r.getString(1)),UUID.fromString(r.getString(2)),playerUuid,r.getString(4),r.getInt(5),r.getBytes(3),r.getString(6)));}return java.util.List.copyOf(out);
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
