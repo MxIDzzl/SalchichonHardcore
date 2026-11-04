@@ -14,3 +14,10 @@ CREATE TABLE IF NOT EXISTS player_value_adjustments (
 
 CREATE INDEX IF NOT EXISTS idx_player_value_adjustments_player
     ON player_value_adjustments (player_uuid, created_at, id);
+
+-- At most one unfinished or quarantined vault operation may exist per player.
+-- Existing duplicates intentionally make this migration fail rather than silently
+-- choosing an operation to discard; operators must reconcile them first.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_operations_one_active_per_player
+    ON vault_operations (player_uuid)
+    WHERE status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED');
