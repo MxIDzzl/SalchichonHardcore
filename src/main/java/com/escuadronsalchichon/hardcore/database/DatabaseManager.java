@@ -242,6 +242,23 @@ public class DatabaseManager implements PlayerDataStore {
                     )
                     """);
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_value_adjustments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        player_uuid TEXT NOT NULL,
+                        previous_value INTEGER NOT NULL CHECK (previous_value >= 0),
+                        new_value INTEGER NOT NULL CHECK (new_value >= 0),
+                        adjustment_delta INTEGER NOT NULL,
+                        actor TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_player_value_adjustments_player
+                    ON player_value_adjustments(player_uuid, created_at, id)
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS player_value_items (
                         item_id TEXT PRIMARY KEY,
                         player_uuid TEXT NOT NULL,
@@ -905,6 +922,21 @@ public class DatabaseManager implements PlayerDataStore {
                     """)) {
                 event.setString(1, uuid.toString()); event.setString(2, column); event.setLong(3, previous);
                 event.setLong(4, value); event.setString(5, actor); event.setString(6, reason.trim()); event.executeUpdate();
+            }
+            if ("player_value".equals(column)) {
+                try (PreparedStatement adjustment = connection.prepareStatement("""
+                        INSERT INTO player_value_adjustments(
+                            player_uuid, previous_value, new_value, adjustment_delta, actor, reason
+                        ) VALUES (?, ?, ?, ?, ?, ?)
+                        """)) {
+                    adjustment.setString(1, uuid.toString());
+                    adjustment.setLong(2, previous);
+                    adjustment.setLong(3, value);
+                    adjustment.setLong(4, Math.subtractExact(value, previous));
+                    adjustment.setString(5, actor);
+                    adjustment.setString(6, reason.trim());
+                    adjustment.executeUpdate();
+                }
             }
             connection.commit(); return true;
         } catch (SQLException exception) {
