@@ -403,6 +403,23 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                         """)) {
                     player.setObject(1, uuid); player.setString(2, username); player.executeUpdate();
                 }
+                try (PreparedStatement operation = connection.prepareStatement("""
+                        INSERT INTO vault_operations(
+                            operation_id, player_uuid, operation_type, status, item_id,
+                            material, amount, item_payload, credited_value, created_at, updated_at
+                        ) VALUES (?, ?, 'DEPOSIT', 'COMMITTED', ?, ?, ?, ?, ?, ?, ?)
+                        """)) {
+                    operation.setObject(1, item.itemId());
+                    operation.setObject(2, uuid);
+                    operation.setObject(3, item.itemId());
+                    operation.setString(4, item.material());
+                    operation.setInt(5, item.amount());
+                    operation.setBytes(6, item.payload());
+                    operation.setLong(7, item.creditedValue());
+                    operation.setObject(8, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC")));
+                    operation.setObject(9, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC")));
+                    operation.executeUpdate();
+                }
                 try (PreparedStatement insert = connection.prepareStatement("""
                         INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
                         VALUES (?,?,?,?,?,?,?)
