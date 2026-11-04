@@ -332,6 +332,11 @@ public class DatabaseManager implements PlayerDataStore {
                     WHERE status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED')
                     """);
             statement.executeUpdate("""
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_vault_operations_one_active_per_player
+                    ON vault_operations(player_uuid)
+                    WHERE status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED')
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS vault_claims (
                         claim_id TEXT PRIMARY KEY,
                         operation_id TEXT NOT NULL UNIQUE,
