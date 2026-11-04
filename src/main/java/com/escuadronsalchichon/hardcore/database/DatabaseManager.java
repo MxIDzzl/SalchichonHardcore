@@ -1298,6 +1298,12 @@ public class DatabaseManager implements PlayerDataStore {
                     "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
                 operations.executeUpdate();
             }
+            // A PREPARED deposit may have been interrupted between journal creation
+            // and inventory mutation. Without an inventory marker, never guess.
+            try (PreparedStatement deposits = connection.prepareStatement(
+                    "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP WHERE operation_type='DEPOSIT' AND status='PREPARED'")) {
+                changed += deposits.executeUpdate();
+            }
             connection.commit();
             return changed;
         } catch (SQLException exception) {
