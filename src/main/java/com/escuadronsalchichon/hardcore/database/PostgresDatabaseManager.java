@@ -276,14 +276,35 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         if (!isConnected() || uuid == null || blank(username) || deathDate == null) return false;
         String playerSql = """
                 INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
-                VALUES (?, ?, ?, 0)
-                ON CONFLICT(uuid) DO UPDATE SET username = EXCLUDED.username, last_death_date = EXCLUDED.last_death_date
+                VALUES (?, ?, NULL, 0)
+                ON CONFLICT(uuid) DO UPDATE SET username = EXCLUDED.username
                 """;
         try (Connection connection = pool.getConnection()) {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement player = connection.prepareStatement(playerSql)) {
-                    player.setObject(1, uuid); player.setString(2, username); player.setObject(3, deathDate); player.executeUpdate();
+                    player.setObject(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                LocalDate previousDeathDate;
+                try (PreparedStatement query = connection.prepareStatement(
+                        "SELECT last_death_date FROM player_data WHERE uuid = ? FOR UPDATE")) {
+                    query.setObject(1, uuid);
+                    try (ResultSet result = query.executeQuery()) {
+                        if (!result.next()) throw new SQLException("No se encontró el jugador después del upsert.");
+                        previousDeathDate = result.getObject(1, LocalDate.class);
+                    }
+                }
+                // Idempotencia por día: reintentar el mismo evento no duplica la muerte.
+                // Una restauración administrativa limpia last_death_date y permite otra muerte real.
+                if (deathDate.equals(previousDeathDate)) {
+                    connection.commit();
+                    return true;
+                }
+                try (PreparedStatement updateDeath = connection.prepareStatement(
+                        "UPDATE player_data SET last_death_date = ? WHERE uuid = ?")) {
+                    updateDeath.setObject(1, deathDate);
+                    updateDeath.setObject(2, uuid);
+                    if (updateDeath.executeUpdate() != 1) throw new SQLException("No se pudo actualizar la fecha de muerte.");
                 }
                 long previous = 0;
                 try (PreparedStatement query = connection.prepareStatement("SELECT official_deaths FROM player_stats WHERE player_uuid = ? FOR UPDATE")) {
