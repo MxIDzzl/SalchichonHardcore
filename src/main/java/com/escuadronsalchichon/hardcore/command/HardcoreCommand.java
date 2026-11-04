@@ -140,6 +140,13 @@ public class HardcoreCommand implements CommandExecutor {
                     sender.sendMessage("§7Estado: " + (hasLife ? "§aVIDA DISPONIBLE" : "§cSIN VIDAS"));
                     sender.sendMessage("§7Última muerte: §f" +
                             (target.getLastDeathDate() == null ? "Ninguna registrada" : target.getLastDeathDate()));
+                    long officialDeaths = databaseManager.getOfficialDeaths(target.getUuid());
+                    long playtimeTicks = databaseManager.getPlaytimeTicks(target.getUuid());
+                    long playerValue = databaseManager.getPlayerValue(target.getUuid());
+                    sender.sendMessage("§7Muertes oficiales: §f" + officialDeaths);
+                    sender.sendMessage("§7Tiempo registrado: §f" + formatPlaytime(playtimeTicks));
+                    sender.sendMessage("§7Player Value: §d" + com.escuadronsalchichon.hardcore.util.PlayerValueFormatter.compact(playerValue)
+                            + " §8(" + playerValue + ")");
                 }
                 case "restore" -> {
                     if (hasLife) {
@@ -208,6 +215,16 @@ public class HardcoreCommand implements CommandExecutor {
             bossBarManager.showStatus(onlinePlayer, true);
             onlinePlayer.sendMessage(notification);
         }
+    }
+
+    private String formatPlaytime(long ticks) {
+        long totalMinutes = Math.max(0L, ticks) / 20L / 60L;
+        long days = totalMinutes / 1440L;
+        long hours = (totalMinutes % 1440L) / 60L;
+        long minutes = totalMinutes % 60L;
+        if (days > 0) return days + "d " + hours + "h " + minutes + "m";
+        if (hours > 0) return hours + "h " + minutes + "m";
+        return minutes + "m";
     }
 
     private void sendUsage(CommandSender sender) {
