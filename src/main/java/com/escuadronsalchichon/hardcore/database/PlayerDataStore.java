@@ -55,8 +55,6 @@ public interface PlayerDataStore {
     /** Commits a previously prepared deposit and its score in one transaction. */
     boolean commitVaultDeposit(UUID uuid, UUID operationId);
 
-    /** Cancels only a PREPARED operation; committed or uncertain operations are immutable. */
-    boolean abortVaultDeposit(UUID uuid, UUID operationId);
 
     java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset);
 
