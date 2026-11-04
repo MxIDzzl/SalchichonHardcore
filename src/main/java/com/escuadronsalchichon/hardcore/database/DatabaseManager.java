@@ -1042,8 +1042,10 @@ public class DatabaseManager implements PlayerDataStore {
                     INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
                     ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+excluded.player_value,
                     updated_at=CURRENT_TIMESTAMP
+                    WHERE player_stats.player_value <= 9223372036854775807 - excluded.player_value
                     """)) {
-                stats.setString(1, uuid.toString()); stats.setLong(2, value); stats.executeUpdate();
+                stats.setString(1, uuid.toString()); stats.setLong(2, value);
+                if (stats.executeUpdate() != 1) throw new SQLException("El Player Value excedería el límite BIGINT.");
             }
             try (PreparedStatement update = connection.prepareStatement("""
                     UPDATE vault_operations SET status='COMMITTED',updated_at=? WHERE operation_id=? AND player_uuid=? AND status='PREPARED'
