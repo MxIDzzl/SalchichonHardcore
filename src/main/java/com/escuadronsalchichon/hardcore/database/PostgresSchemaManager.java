@@ -153,7 +153,20 @@ public final class PostgresSchemaManager {
     }
 
     private void validateRequiredTables(Connection connection) throws SQLException {
-        String[] required = {"player_data", "admin_audit", "player_stats", "stat_events"};
+        String[] required = {
+                "schema_version",
+                "player_data",
+                "admin_audit",
+                "player_stats",
+                "stat_events",
+                "player_value_items",
+                "trade_sessions",
+                "trade_escrow_items",
+                "operation_receipts",
+                "vault_operations",
+                "vault_claims",
+                "vault_cooldowns"
+        };
         for (String table : required) {
             try (PreparedStatement statement = connection.prepareStatement("""
                     SELECT EXISTS (
