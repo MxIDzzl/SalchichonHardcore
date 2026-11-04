@@ -113,7 +113,7 @@ Deposits now expose three persistence operations in both SQLite and PostgreSQL:
 
 1. `prepareVaultDeposit` writes a durable `DEPOSIT/PREPARED` journal row before any inventory mutation. The operation UUID is also the item UUID, making retries address the same journal record rather than creating a second credit.
 2. `commitVaultDeposit` locks/reads that prepared record, inserts the vault item, increments the aggregate Player Value, and changes the journal to `COMMITTED` in one database transaction. Repeating a commit for an already committed operation is idempotent.
-3. `abortVaultDeposit` can transition only a `PREPARED` deposit to `CANCELLED`; it cannot cancel a committed or quarantined operation.
+3. No cancellation operation is exposed. A prepared deposit cannot be cancelled until an inventory-aware proof can establish that the original item is still present.
 
 At startup, `flagUncertainVaultOperations` also moves every remaining `DEPOSIT/PREPARED` row to `RECOVERY_REQUIRED`. This is deliberately conservative: the current database layer cannot prove whether Bukkit inventory mutation happened before the process stopped. Quarantined rows must not be automatically committed or cancelled. They keep the player's active-operation lock and require an inventory-aware reconciliation procedure.
 
@@ -123,3 +123,10 @@ At startup, `flagUncertainVaultOperations` also moves every remaining `DEPOSIT/P
 ### Validación adicional de límites numéricos — 2026-11-04
 
 La confirmación transaccional del depósito ahora impide que el agregado `player_stats.player_value` exceda el máximo de `BIGINT` (`9223372036854775807`). La actualización condiciona el `UPSERT` al espacio restante y exige exactamente una fila afectada; si el límite se rebasaría, se revierte la transacción completa, incluyendo el alta del objeto y el cambio de estado de la operación. Esta protección está aplicada tanto en SQLite como en PostgreSQL. No sustituye la futura reconciliación del inventario ni habilita depósitos en vivo.
+
+
+## Separación entre entregas normales y recuperación manual — 2026-11-04
+
+La consulta `getPendingVaultClaims` devuelve exclusivamente reclamaciones `PENDING`. Las filas `RECOVERY_REQUIRED` quedan fuera del flujo normal y no deben entregarse automáticamente: requieren conciliación manual con evidencia del inventario. Esto evita que una futura rutina de inicio de sesión interprete una operación ambigua como una entrega segura.
+
+Además, `markVaultClaimDelivering` solo permite pasar de `PENDING` a `DELIVERING` cuando existe la operación correspondiente del mismo jugador y sigue en `DELIVERY_PENDING`. La condición se valida en la propia sentencia SQL en SQLite y PostgreSQL. No resuelve la ventana de duplicación entre Bukkit y la base de datos; únicamente impide iniciar entregas desde reclamaciones u operaciones que ya no están en un estado coherente.
