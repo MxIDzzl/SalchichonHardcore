@@ -64,7 +64,7 @@ public interface PlayerDataStore {
 
     java.time.Instant getVaultCooldown(UUID uuid);
 
-    VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId);
+    VaultClaimRecord createVaultWithdrawal(UUID uuid, UUID itemId, java.time.Instant now, java.time.Instant nextAllowedAt);
 
     boolean markVaultClaimDelivering(UUID claimId, UUID playerUuid);
 
