@@ -759,14 +759,34 @@ public class DatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try (PreparedStatement player = connection.prepareStatement("""
                     INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
-                    VALUES (?, ?, ?, 0)
-                    ON CONFLICT(uuid) DO UPDATE SET username = excluded.username,
-                        last_death_date = excluded.last_death_date
+                    VALUES (?, ?, NULL, 0)
+                    ON CONFLICT(uuid) DO UPDATE SET username = excluded.username
                     """)) {
                 player.setString(1, uuid.toString());
                 player.setString(2, username);
-                player.setString(3, deathDate.toString());
                 player.executeUpdate();
+            }
+            LocalDate previousDeathDate;
+            try (PreparedStatement query = connection.prepareStatement(
+                    "SELECT last_death_date FROM player_data WHERE uuid = ?")) {
+                query.setString(1, uuid.toString());
+                try (ResultSet result = query.executeQuery()) {
+                    if (!result.next()) throw new SQLException("No se encontró el jugador después del upsert.");
+                    String storedDate = result.getString(1);
+                    previousDeathDate = storedDate == null ? null : LocalDate.parse(storedDate);
+                }
+            }
+            // Repeated delivery of the same death event must not increment counters twice.
+            // Admin life restoration clears last_death_date, allowing a later real death.
+            if (deathDate.equals(previousDeathDate)) {
+                connection.commit();
+                return true;
+            }
+            try (PreparedStatement updateDeath = connection.prepareStatement(
+                    "UPDATE player_data SET last_death_date = ? WHERE uuid = ?")) {
+                updateDeath.setString(1, deathDate.toString());
+                updateDeath.setString(2, uuid.toString());
+                if (updateDeath.executeUpdate() != 1) throw new SQLException("No se pudo actualizar la fecha de muerte.");
             }
             long previous = 0;
             try (PreparedStatement query = connection.prepareStatement(
