@@ -97,3 +97,8 @@ unimplemented. Keep `player-value.enabled: false`.
 ## Official death counter retry protection
 
 Both persistence adapters now treat a second registration for the same player and in-game date as an idempotent retry: it returns success without incrementing the official death counter or appending another stat event. The player row is locked within the transaction in PostgreSQL; SQLite serializes access through its synchronized connection methods. An administrator's life restoration clears `last_death_date`, so a subsequent real death can still be counted. This protects repeated processing of the same daily death state; it is not a globally unique event ID across different dates.
+
+
+## Administrative Player Value adjustments
+
+Manual corrections to the aggregate score are intentionally separate from item deposits and withdrawals. Both database adapters write a `player_value_adjustments` ledger row atomically with the `player_stats.player_value` update and `stat_events` audit event. The signed delta records the administrative offset; it is not represented as a vault item and cannot be withdrawn or traded. PostgreSQL schema v4 creates this ledger for existing installations, while SQLite creates it idempotently during normal table initialization.
