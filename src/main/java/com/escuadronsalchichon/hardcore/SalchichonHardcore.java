@@ -49,7 +49,7 @@ public class SalchichonHardcore extends JavaPlugin {
             return;
         }
 
-        int uncertainClaims = databaseManager.flagUncertainVaultClaims();
+        int uncertainClaims = databaseManager.flagUncertainVaultOperations();
         if (uncertainClaims < 0) {
             getLogger().severe("No se pudo completar la revisión de reclamaciones Player Value; el plugin se desactivará por seguridad.");
             databaseManager.disconnect();
