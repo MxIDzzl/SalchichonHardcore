@@ -6,6 +6,7 @@ import com.escuadronsalchichon.hardcore.database.PostgresDatabaseManager;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
+import com.escuadronsalchichon.hardcore.util.PlaytimeFormatter;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -144,7 +145,7 @@ public class HardcoreCommand implements CommandExecutor {
                     long playtimeTicks = databaseManager.getPlaytimeTicks(target.getUuid());
                     long playerValue = databaseManager.getPlayerValue(target.getUuid());
                     sender.sendMessage("§7Muertes oficiales: §f" + officialDeaths);
-                    sender.sendMessage("§7Tiempo registrado: §f" + formatPlaytime(playtimeTicks));
+                    sender.sendMessage("§7Tiempo registrado: §f" + PlaytimeFormatter.format(playtimeTicks));
                     sender.sendMessage("§7Player Value: §d" + com.escuadronsalchichon.hardcore.util.PlayerValueFormatter.compact(playerValue)
                             + " §8(" + playerValue + ")");
                 }
@@ -215,16 +216,6 @@ public class HardcoreCommand implements CommandExecutor {
             bossBarManager.showStatus(onlinePlayer, true);
             onlinePlayer.sendMessage(notification);
         }
-    }
-
-    private String formatPlaytime(long ticks) {
-        long totalMinutes = Math.max(0L, ticks) / 20L / 60L;
-        long days = totalMinutes / 1440L;
-        long hours = (totalMinutes % 1440L) / 60L;
-        long minutes = totalMinutes % 60L;
-        if (days > 0) return days + "d " + hours + "h " + minutes + "m";
-        if (hours > 0) return hours + "h " + minutes + "m";
-        return minutes + "m";
     }
 
     private void sendUsage(CommandSender sender) {
