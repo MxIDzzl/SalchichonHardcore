@@ -20,6 +20,7 @@ This build is for a maintenance-window staging test only. It is not a production
 - Playtime increases while online and is flushed on quit and clean shutdown.
 - PlaceholderAPI values for deaths and playtime match the stored values.
 - An operator can run `/hardcore stat <player> <deaths|playtime|value> <new_value> <reason>`; verify the mandatory reason and permission checks.
+- `/hardcore check <player>` displays life status, last death, official deaths, registered playtime, and Player Value; compare every displayed value with the database and PlaceholderAPI.
 - Restart the server and verify the values persist.
 - Check logs for SQL errors, stack traces, scheduler errors, and unexpected warnings.
 
@@ -27,7 +28,8 @@ This build is for a maintenance-window staging test only. It is not a production
 
 - Player Value vault is not implemented; its configuration must stay disabled.
 - Trade is not implemented.
-- PostgreSQL importer and backend are not production-ready.
+- PostgreSQL importer and backend are not production-ready. The API v1 document is a contract only, not a running service.
+- The API contract does not authorize exposing PostgreSQL or plugin credentials to the public website.
 - This build does not include the separate website or admin panel.
 
 ## Rollback
