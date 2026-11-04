@@ -394,6 +394,21 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                     event.setObject(1, uuid); event.setString(2, column); event.setLong(3, previous);
                     event.setLong(4, value); event.setString(5, actor); event.setString(6, reason.trim()); event.executeUpdate();
                 }
+                if ("player_value".equals(column)) {
+                    try (PreparedStatement adjustment = connection.prepareStatement("""
+                            INSERT INTO player_value_adjustments(
+                                player_uuid, previous_value, new_value, adjustment_delta, actor, reason
+                            ) VALUES (?, ?, ?, ?, ?, ?)
+                            """)) {
+                        adjustment.setObject(1, uuid);
+                        adjustment.setLong(2, previous);
+                        adjustment.setLong(3, value);
+                        adjustment.setLong(4, Math.subtractExact(value, previous));
+                        adjustment.setString(5, actor);
+                        adjustment.setString(6, reason.trim());
+                        adjustment.executeUpdate();
+                    }
+                }
                 connection.commit(); return true;
             } catch (SQLException exception) { connection.rollback(); throw exception; }
             finally { connection.setAutoCommit(true); }
