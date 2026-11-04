@@ -93,3 +93,7 @@ remove an item and then rely on this method as crash-safe delivery. The
 inventory marker, PREPARED journal transition, atomic cooldown update,
 per-player unresolved-operation lock, and reconciliation service remain
 unimplemented. Keep `player-value.enabled: false`.
+
+## Official death counter retry protection
+
+Both persistence adapters now treat a second registration for the same player and in-game date as an idempotent retry: it returns success without incrementing the official death counter or appending another stat event. The player row is locked within the transaction in PostgreSQL; SQLite serializes access through its synchronized connection methods. An administrator's life restoration clears `last_death_date`, so a subsequent real death can still be counted. This protects repeated processing of the same daily death state; it is not a globally unique event ID across different dates.
