@@ -43,7 +43,7 @@ The claim marker must be a plugin-owned PDC key and must never be copied from us
 
 ## Concurrency and persistence
 
-- Use unique operation and claim UUIDs; enforce a partial unique constraint for one active operation per player (or equivalent transaction-level lock).
+- Use unique operation and claim UUIDs; SQLite and PostgreSQL now enforce a partial unique index allowing only one PREPARED, DELIVERY_PENDING, or RECOVERY_REQUIRED operation per player. A schema-v4 migration deliberately fails if legacy data already contains multiple active operations; reconcile those rows instead of silently discarding one.
 - Use row locks for vault-item reservation and player-value updates.
 - Use compare-and-set state transitions (expected current status) so retries cannot apply a transition twice.
 - Update item rows, aggregate Player Value, operation status, and cooldown in the same SQL transaction.
@@ -102,3 +102,6 @@ Both persistence adapters now treat a second registration for the same player an
 ## Administrative Player Value adjustments
 
 Manual corrections to the aggregate score are intentionally separate from item deposits and withdrawals. Both database adapters write a `player_value_adjustments` ledger row atomically with the `player_stats.player_value` update and `stat_events` audit event. The signed delta records the administrative offset; it is not represented as a vault item and cannot be withdrawn or traded. PostgreSQL schema v4 creates this ledger for existing installations, while SQLite creates it idempotently during normal table initialization.
+
+
+The database-level active-operation guard is now present in both adapters. It is a second line of defense: service-level checks and player interaction locks are still required, and a unique-index conflict must be reported as an existing/in-progress operation rather than retried as a new deposit or withdrawal.
