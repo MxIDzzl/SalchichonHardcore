@@ -21,7 +21,7 @@ import java.util.List;
  */
 public final class PostgresSchemaManager {
 
-    private static final int CURRENT_SCHEMA_VERSION = 3;
+    private static final int CURRENT_SCHEMA_VERSION = 4;
 
     private final JavaPlugin plugin;
     private final PostgresConnectionPool postgres;
@@ -57,6 +57,11 @@ public final class PostgresSchemaManager {
                 if (installedVersion < 3) {
                     applyStatements(connection, loadStatements("/db/postgresql/schema-v3.sql"));
                     recordVersion(connection, 3);
+                    installedVersion = 3;
+                }
+                if (installedVersion < 4) {
+                    applyStatements(connection, loadStatements("/db/postgresql/schema-v4.sql"));
+                    recordVersion(connection, 4);
                 }
 
                 validateRequiredTables(connection);
@@ -165,7 +170,8 @@ public final class PostgresSchemaManager {
                 "operation_receipts",
                 "vault_operations",
                 "vault_claims",
-                "vault_cooldowns"
+                "vault_cooldowns",
+                "player_value_adjustments"
         };
         for (String table : required) {
             try (PreparedStatement statement = connection.prepareStatement("""
