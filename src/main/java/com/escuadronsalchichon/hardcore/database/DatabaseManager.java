@@ -1063,20 +1063,6 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    @Override
-    public synchronized boolean abortVaultDeposit(UUID uuid, UUID operationId) {
-        if (!isConnected() || uuid == null || operationId == null) return false;
-        try (PreparedStatement update = connection.prepareStatement("""
-                UPDATE vault_operations SET status='CANCELLED',updated_at=?
-                WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
-                """)) {
-            update.setString(1, java.time.Instant.now().toString());
-            update.setString(2, operationId.toString()); update.setString(3, uuid.toString());
-            return update.executeUpdate() == 1;
-        } catch (SQLException exception) {
-            plugin.getLogger().severe("No se pudo cancelar el depósito Player Value."); exception.printStackTrace(); return false;
-        }
-    }
 
     @Override
     public synchronized boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
