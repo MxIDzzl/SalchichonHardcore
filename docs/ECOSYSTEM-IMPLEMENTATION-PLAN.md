@@ -124,3 +124,7 @@ Do not enable PostgreSQL or advertise any not-implemented feature as available u
 
 
 - 2026-11-04: la confirmación de depósitos ahora rechaza desbordamientos del agregado Player Value `BIGINT` en SQLite y PostgreSQL; la transacción completa se revierte si no puede actualizar exactamente una fila.
+
+### Retiro de bóveda: aislamiento de reclamaciones inciertas — 2026-11-04
+
+Las reclamaciones `RECOVERY_REQUIRED` ya no aparecen en `getPendingVaultClaims`, por lo que no pueden confundirse con trabajo seguro de entrega automática. La transición a `DELIVERING` exige además que la operación asociada pertenezca al mismo jugador y permanezca en `DELIVERY_PENDING`, validado en la propia sentencia SQL en ambos motores. La finalización sigue siendo transaccional. Esto reduce inconsistencias de estado, pero no ofrece entrega exactly-once de inventario: Player Value permanece desactivado hasta implementar marcadores PDC y reconciliación.
