@@ -426,6 +426,108 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     }
 
 
+
+    @Override
+    public boolean prepareVaultDeposit(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || blank(username) || item == null || !uuid.equals(item.playerUuid())) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                        VALUES (?,?,NULL,0) ON CONFLICT(uuid) DO UPDATE SET username=EXCLUDED.username
+                        """)) {
+                    player.setObject(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                try (PreparedStatement operation = connection.prepareStatement("""
+                        INSERT INTO vault_operations(
+                            operation_id,player_uuid,operation_type,status,item_id,material,amount,
+                            item_payload,credited_value,created_at,updated_at
+                        ) VALUES (?,?,'DEPOSIT','PREPARED',?,?,?,?,?,?,?)
+                        """)) {
+                    operation.setObject(1, item.itemId()); operation.setObject(2, uuid);
+                    operation.setObject(3, item.itemId()); operation.setString(4, item.material());
+                    operation.setInt(5, item.amount()); operation.setBytes(6, item.payload());
+                    operation.setLong(7, item.creditedValue());
+                    OffsetDateTime created=OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC"));
+                    operation.setObject(8, created); operation.setObject(9, created); operation.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo preparar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public boolean commitVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                String material; int amount; byte[] payload; long value; OffsetDateTime created;
+                try (PreparedStatement query = connection.prepareStatement("""
+                        SELECT material,amount,item_payload,credited_value,created_at,status
+                        FROM vault_operations
+                        WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
+                        FOR UPDATE
+                        """)) {
+                    query.setObject(1, operationId); query.setObject(2, uuid);
+                    try (ResultSet row = query.executeQuery()) {
+                        if (!row.next()) { connection.rollback(); return false; }
+                        if ("COMMITTED".equals(row.getString("status"))) { connection.commit(); return true; }
+                        if (!"PREPARED".equals(row.getString("status"))) { connection.rollback(); return false; }
+                        material=row.getString("material"); amount=row.getInt("amount"); payload=row.getBytes("item_payload");
+                        value=row.getLong("credited_value"); created=row.getObject("created_at", OffsetDateTime.class);
+                    }
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                        VALUES (?,?,?,?,?,?,?)
+                        """)) {
+                    insert.setObject(1, operationId); insert.setObject(2, uuid); insert.setString(3, material);
+                    insert.setInt(4, amount); insert.setBytes(5, payload); insert.setLong(6, value);
+                    insert.setObject(7, created); insert.executeUpdate();
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+EXCLUDED.player_value,
+                        updated_at=now()
+                        """)) {
+                    stats.setObject(1, uuid); stats.setLong(2, value); stats.executeUpdate();
+                }
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE vault_operations SET status='COMMITTED',updated_at=now()
+                        WHERE operation_id=? AND player_uuid=? AND status='PREPARED'
+                        """)) {
+                    update.setObject(1, operationId); update.setObject(2, uuid);
+                    if (update.executeUpdate()!=1) throw new SQLException("La operación dejó de estar PREPARED.");
+                }
+                connection.commit(); return true;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback(); throw exception;
+            } finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public boolean abortVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement update = connection.prepareStatement("""
+                     UPDATE vault_operations SET status='CANCELLED',updated_at=now()
+                     WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
+                     """)) {
+            update.setObject(1, operationId); update.setObject(2, uuid);
+            return update.executeUpdate()==1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo cancelar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
     @Override
     public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
         if (!isConnected() || uuid == null || blank(username) || item == null
