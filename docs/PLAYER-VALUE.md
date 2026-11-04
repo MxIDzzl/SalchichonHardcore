@@ -43,3 +43,6 @@ The plugin now has a standalone `VaultItemPolicy` that accepts only materials ex
 ## Administrative score corrections
 
 Administrative changes made with `/hardcore stat <player> value <new_value> <reason>` are recorded in the dedicated `player_value_adjustments` ledger in the same transaction as the aggregate update and the general stat event. Each record stores the previous value, new value, signed delta, administrator, reason, and timestamp. These corrections are separate from item-backed vault deposits and withdrawals; they do not create, destroy, or transfer vault items. The ledger makes the difference explicit for public rankings and future administration rather than pretending every point came from a deposited item.
+
+
+The persistence layer also enforces at most one active or quarantined vault operation per player with a partial unique index in SQLite and PostgreSQL schema v4. This protects against concurrent requests at the database boundary; the future Bukkit service must still provide player-facing locking and recovery.
