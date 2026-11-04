@@ -494,8 +494,10 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                         INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
                         ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+EXCLUDED.player_value,
                         updated_at=now()
+                        WHERE player_stats.player_value <= 9223372036854775807 - EXCLUDED.player_value
                         """)) {
-                    stats.setObject(1, uuid); stats.setLong(2, value); stats.executeUpdate();
+                    stats.setObject(1, uuid); stats.setLong(2, value);
+                    if (stats.executeUpdate() != 1) throw new SQLException("El Player Value excedería el límite BIGINT.");
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE vault_operations SET status='COMMITTED',updated_at=now()
