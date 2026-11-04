@@ -725,12 +725,6 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
-    private boolean updateClaim(UUID claimId,UUID playerUuid,String from,String to){
-        if(!isConnected()||claimId==null||playerUuid==null)return false;
-        try(Connection c=pool.getConnection();PreparedStatement s=c.prepareStatement("UPDATE vault_claims SET status=?,delivered_at=CASE WHEN ?='DELIVERED' THEN now() ELSE delivered_at END WHERE claim_id=? AND player_uuid=? AND status=?")){
-            s.setString(1,to);s.setString(2,to);s.setObject(3,claimId);s.setObject(4,playerUuid);s.setString(5,from);return s.executeUpdate()==1;
-        }catch(SQLException e){plugin.getLogger().severe("No se pudo actualizar el retiro.");return false;}
-    }
 
     @Override
     public java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
