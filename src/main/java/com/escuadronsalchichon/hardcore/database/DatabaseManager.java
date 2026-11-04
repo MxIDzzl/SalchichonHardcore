@@ -1275,12 +1275,6 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
-    private boolean updateVaultClaim(UUID claimId,UUID playerUuid,String from,String to){
-        if(!isConnected()||claimId==null||playerUuid==null)return false;
-        try(PreparedStatement s=connection.prepareStatement("UPDATE vault_claims SET status=?,delivered_at=CASE WHEN ?='DELIVERED' THEN CURRENT_TIMESTAMP ELSE delivered_at END WHERE claim_id=? AND player_uuid=? AND status=?")){
-            s.setString(1,to);s.setString(2,to);s.setString(3,claimId.toString());s.setString(4,playerUuid.toString());s.setString(5,from);return s.executeUpdate()==1;
-        }catch(SQLException e){plugin.getLogger().severe("No se pudo actualizar el retiro.");return false;}
-    }
 
     @Override
     public synchronized java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
