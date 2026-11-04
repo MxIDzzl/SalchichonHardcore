@@ -105,3 +105,16 @@ Manual corrections to the aggregate score are intentionally separate from item d
 
 
 The database-level active-operation guard is now present in both adapters. It is a second line of defense: service-level checks and player interaction locks are still required, and a unique-index conflict must be reported as an existing/in-progress operation rather than retried as a new deposit or withdrawal.
+
+
+## Two-phase deposit journal (database layer)
+
+Deposits now expose three persistence operations in both SQLite and PostgreSQL:
+
+1. `prepareVaultDeposit` writes a durable `DEPOSIT/PREPARED` journal row before any inventory mutation. The operation UUID is also the item UUID, making retries address the same journal record rather than creating a second credit.
+2. `commitVaultDeposit` locks/reads that prepared record, inserts the vault item, increments the aggregate Player Value, and changes the journal to `COMMITTED` in one database transaction. Repeating a commit for an already committed operation is idempotent.
+3. `abortVaultDeposit` can transition only a `PREPARED` deposit to `CANCELLED`; it cannot cancel a committed or quarantined operation.
+
+At startup, `flagUncertainVaultOperations` also moves every remaining `DEPOSIT/PREPARED` row to `RECOVERY_REQUIRED`. This is deliberately conservative: the current database layer cannot prove whether Bukkit inventory mutation happened before the process stopped. Quarantined rows must not be automatically committed or cancelled. They keep the player's active-operation lock and require an inventory-aware reconciliation procedure.
+
+**Safety boundary:** the Bukkit inventory adapter, persistent item marker/fingerprint, automated reconciliation, and crash-boundary integration tests are not implemented yet. Therefore this journal is a persistence primitive, not a complete crash-safe deposit flow. Keep Player Value disabled until those pieces and staging tests are complete.
