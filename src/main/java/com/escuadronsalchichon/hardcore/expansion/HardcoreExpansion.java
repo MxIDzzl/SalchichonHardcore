@@ -3,6 +3,7 @@ package com.escuadronsalchichon.hardcore.expansion;
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.util.PlayerValueFormatter;
+import com.escuadronsalchichon.hardcore.util.PlaytimeFormatter;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.OfflinePlayer;
@@ -43,7 +44,7 @@ public class HardcoreExpansion extends PlaceholderExpansion {
                 case "status" -> playerManager.hasLife(player.getUniqueId()) ? "DISPONIBLE" : "SIN VIDAS";
                 case "totems" -> String.valueOf(databaseManager.getTotems(player.getUniqueId()));
                 case "deaths" -> String.valueOf(databaseManager.getOfficialDeaths(player.getUniqueId()));
-                case "playtime" -> formatPlaytime(databaseManager.getPlaytimeTicks(player.getUniqueId()));
+                case "playtime" -> PlaytimeFormatter.format(databaseManager.getPlaytimeTicks(player.getUniqueId()));
                 case "value" -> String.valueOf(databaseManager.getPlayerValue(player.getUniqueId()));
                 case "value_compact" -> PlayerValueFormatter.compact(databaseManager.getPlayerValue(player.getUniqueId()));
                 case "health" -> getHealthValue(player);
@@ -78,15 +79,6 @@ public class HardcoreExpansion extends PlaceholderExpansion {
         return value;
     }
 
-    private String formatPlaytime(long ticks) {
-        long minutes = Math.max(0L, ticks) / 20L / 60L;
-        long days = minutes / 1440;
-        long hours = (minutes % 1440) / 60;
-        long mins = minutes % 60;
-        if (days > 0) return days + "d " + hours + "h";
-        if (hours > 0) return hours + "h " + mins + "m";
-        return mins + "m";
-    }
 
     private String getSeasonDay() {
         String start = plugin.getConfig().getString("season.start-date", LocalDate.now().toString());
