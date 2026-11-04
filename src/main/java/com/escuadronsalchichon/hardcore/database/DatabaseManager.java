@@ -922,6 +922,23 @@ public class DatabaseManager implements PlayerDataStore {
                     """)) {
                 player.setString(1, uuid.toString()); player.setString(2, username); player.executeUpdate();
             }
+            try (PreparedStatement operation = connection.prepareStatement("""
+                    INSERT INTO vault_operations(
+                        operation_id, player_uuid, operation_type, status, item_id,
+                        material, amount, item_payload, credited_value, created_at, updated_at
+                    ) VALUES (?, ?, 'DEPOSIT', 'COMMITTED', ?, ?, ?, ?, ?, ?, ?)
+                    """)) {
+                operation.setString(1, item.itemId().toString());
+                operation.setString(2, uuid.toString());
+                operation.setString(3, item.itemId().toString());
+                operation.setString(4, item.material());
+                operation.setInt(5, item.amount());
+                operation.setBytes(6, item.payload());
+                operation.setLong(7, item.creditedValue());
+                operation.setString(8, item.createdAt().toString());
+                operation.setString(9, item.createdAt().toString());
+                operation.executeUpdate();
+            }
             try (PreparedStatement insert = connection.prepareStatement("""
                     INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
                     VALUES (?,?,?,?,?,?,?)
