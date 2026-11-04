@@ -113,3 +113,11 @@ Not implemented/release-ready yet:
 - End-to-end migration rehearsal, integration tests, and production cutover.
 
 Do not enable PostgreSQL or advertise any not-implemented feature as available until its release gates pass.
+
+
+### Player Value deposit journal update — 2026-11-03
+
+- SQLite and PostgreSQL now expose a two-phase deposit persistence contract (`PREPARED` then transactional `COMMITTED`).
+- Startup quarantines abandoned `DEPOSIT/PREPARED` operations as `RECOVERY_REQUIRED`, preventing blind replay or cancellation.
+- An unverified cancellation API was intentionally removed; no code may cancel an operation until inventory evidence is available.
+- Still outstanding: Bukkit inventory adapter, PDC marker/fingerprint, cooldown in the same transaction, inventory-aware recovery/reconciliation, and crash-boundary integration tests. Player Value remains disabled.
