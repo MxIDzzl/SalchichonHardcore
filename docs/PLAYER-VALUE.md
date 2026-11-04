@@ -38,3 +38,8 @@ The player-facing inventory workflow is intentionally not enabled yet. In partic
 ## Strict deposit policy foundation
 
 The plugin now has a standalone `VaultItemPolicy` that accepts only materials explicitly present in the configured allow-list, rejects air, invalid/oversized stacks, metadata-bearing items, and score multiplication overflow. This is a validation primitive, not an enabled player feature: no Bukkit inventory is removed or delivered by this policy, and `player-value.enabled` remains `false` until the journaled inventory workflow and crash-boundary tests are complete.
+
+
+## Administrative score corrections
+
+Administrative changes made with `/hardcore stat <player> value <new_value> <reason>` are recorded in the dedicated `player_value_adjustments` ledger in the same transaction as the aggregate update and the general stat event. Each record stores the previous value, new value, signed delta, administrator, reason, and timestamp. These corrections are separate from item-backed vault deposits and withdrawals; they do not create, destroy, or transfer vault items. The ledger makes the difference explicit for public rankings and future administration rather than pretending every point came from a deposited item.
