@@ -963,6 +963,121 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
+
+    @Override
+    public synchronized boolean prepareVaultDeposit(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || username == null || username.isBlank()
+                || item == null || !uuid.equals(item.playerUuid())) return false;
+        boolean previousAutoCommit = true;
+        try {
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            try (PreparedStatement player = connection.prepareStatement("""
+                    INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                    VALUES (?,?,NULL,0)
+                    ON CONFLICT(uuid) DO UPDATE SET username=excluded.username
+                    """)) {
+                player.setString(1, uuid.toString()); player.setString(2, username); player.executeUpdate();
+            }
+            try (PreparedStatement operation = connection.prepareStatement("""
+                    INSERT INTO vault_operations(
+                        operation_id,player_uuid,operation_type,status,item_id,material,amount,
+                        item_payload,credited_value,created_at,updated_at
+                    ) VALUES (?,?,'DEPOSIT','PREPARED',?,?,?,?,?,?,?)
+                    """)) {
+                operation.setString(1, item.itemId().toString());
+                operation.setString(2, uuid.toString());
+                operation.setString(3, item.itemId().toString());
+                operation.setString(4, item.material());
+                operation.setInt(5, item.amount());
+                operation.setBytes(6, item.payload());
+                operation.setLong(7, item.creditedValue());
+                operation.setString(8, item.createdAt().toString());
+                operation.setString(9, item.createdAt().toString());
+                operation.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudo preparar el depósito Player Value.");
+            exception.printStackTrace(); return false;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); } catch (SQLException exception) {
+                plugin.getLogger().severe("No se pudo restaurar autocommit tras preparar depósito.");
+            }
+        }
+    }
+
+    @Override
+    public synchronized boolean commitVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        boolean previousAutoCommit = true;
+        try {
+            previousAutoCommit = connection.getAutoCommit();
+            connection.setAutoCommit(false);
+            String material; int amount; byte[] payload; long value; java.time.Instant createdAt;
+            try (PreparedStatement query = connection.prepareStatement("""
+                    SELECT item_id,material,amount,item_payload,credited_value,created_at,status
+                    FROM vault_operations WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
+                    """)) {
+                query.setString(1, operationId.toString()); query.setString(2, uuid.toString());
+                try (ResultSet row = query.executeQuery()) {
+                    if (!row.next()) { connection.rollback(); return false; }
+                    if ("COMMITTED".equals(row.getString("status"))) { connection.commit(); return true; }
+                    if (!"PREPARED".equals(row.getString("status"))) { connection.rollback(); return false; }
+                    material=row.getString("material"); amount=row.getInt("amount"); payload=row.getBytes("item_payload");
+                    value=row.getLong("credited_value"); createdAt=java.time.Instant.parse(row.getString("created_at"));
+                }
+            }
+            try (PreparedStatement insert = connection.prepareStatement("""
+                    INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                    VALUES (?,?,?,?,?,?,?)
+                    """)) {
+                insert.setString(1, operationId.toString()); insert.setString(2, uuid.toString());
+                insert.setString(3, material); insert.setInt(4, amount); insert.setBytes(5, payload);
+                insert.setLong(6, value); insert.setString(7, createdAt.toString()); insert.executeUpdate();
+            }
+            try (PreparedStatement stats = connection.prepareStatement("""
+                    INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,CURRENT_TIMESTAMP)
+                    ON CONFLICT(player_uuid) DO UPDATE SET player_value=player_stats.player_value+excluded.player_value,
+                    updated_at=CURRENT_TIMESTAMP
+                    """)) {
+                stats.setString(1, uuid.toString()); stats.setLong(2, value); stats.executeUpdate();
+            }
+            try (PreparedStatement update = connection.prepareStatement("""
+                    UPDATE vault_operations SET status='COMMITTED',updated_at=? WHERE operation_id=? AND player_uuid=? AND status='PREPARED'
+                    """)) {
+                update.setString(1, java.time.Instant.now().toString()); update.setString(2, operationId.toString());
+                update.setString(3, uuid.toString());
+                if (update.executeUpdate()!=1) throw new SQLException("La operación dejó de estar PREPARED.");
+            }
+            connection.commit(); return true;
+        } catch (SQLException | RuntimeException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudo confirmar el depósito Player Value."); exception.printStackTrace(); return false;
+        } finally {
+            try { connection.setAutoCommit(previousAutoCommit); } catch (SQLException exception) {
+                plugin.getLogger().severe("No se pudo restaurar autocommit tras confirmar depósito.");
+            }
+        }
+    }
+
+    @Override
+    public synchronized boolean abortVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE vault_operations SET status='CANCELLED',updated_at=?
+                WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
+                """)) {
+            update.setString(1, java.time.Instant.now().toString());
+            update.setString(2, operationId.toString()); update.setString(3, uuid.toString());
+            return update.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo cancelar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
     @Override
     public synchronized boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
         if (!isConnected() || uuid == null || username == null || username.isBlank()
