@@ -513,20 +513,6 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
-    @Override
-    public boolean abortVaultDeposit(UUID uuid, UUID operationId) {
-        if (!isConnected() || uuid == null || operationId == null) return false;
-        try (Connection connection = pool.getConnection();
-             PreparedStatement update = connection.prepareStatement("""
-                     UPDATE vault_operations SET status='CANCELLED',updated_at=now()
-                     WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
-                     """)) {
-            update.setObject(1, operationId); update.setObject(2, uuid);
-            return update.executeUpdate()==1;
-        } catch (SQLException exception) {
-            plugin.getLogger().severe("No se pudo cancelar el depósito Player Value."); exception.printStackTrace(); return false;
-        }
-    }
 
     @Override
     public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
