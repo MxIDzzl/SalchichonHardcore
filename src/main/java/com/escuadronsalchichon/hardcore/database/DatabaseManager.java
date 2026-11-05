@@ -3,6 +3,9 @@ package com.escuadronsalchichon.hardcore.database;
 
 import com.escuadronsalchichon.hardcore.player.PlayerData;
 import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeSessionRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeStatus;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -1620,6 +1623,69 @@ public class DatabaseManager implements PlayerDataStore {
             exception.printStackTrace();
         } finally {
             connection = null;
+        }
+    }
+
+ 
+    @Override
+    public synchronized TradeSessionRecord getActiveTrade(UUID playerUuid) {
+        if (!isConnected() || playerUuid == null) return null;
+        try (var statement = connection.prepareStatement("""
+                SELECT trade_id,player_a,player_b,status,revision,
+                       confirmed_revision_a,confirmed_revision_b
+                FROM trade_sessions
+                WHERE (player_a=? OR player_b=?)
+                  AND status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                ORDER BY created_at DESC LIMIT 1
+                """)) {
+            statement.setString(1, playerUuid.toString());
+            statement.setString(2, playerUuid.toString());
+            try (var result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                long revision = result.getLong("revision");
+                long a = result.getLong("confirmed_revision_a");
+                Long confirmedA = result.wasNull() ? null : a;
+                long b = result.getLong("confirmed_revision_b");
+                Long confirmedB = result.wasNull() ? null : b;
+                return new TradeSessionRecord(
+                        UUID.fromString(result.getString("trade_id")),
+                        UUID.fromString(result.getString("player_a")),
+                        UUID.fromString(result.getString("player_b")),
+                        TradeStatus.valueOf(result.getString("status")),
+                        revision, confirmedA, confirmedB);
+            }
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudo consultar el intercambio activo.");
+            return null;
+        }
+    }
+
+    @Override
+    public synchronized java.util.List<TradeEscrowRecord> getTradeItems(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return java.util.List.of();
+        java.util.List<TradeEscrowRecord> items = new java.util.ArrayList<>();
+        try (var statement = connection.prepareStatement("""
+                SELECT operation_id,trade_id,owner_uuid,recipient_uuid,item_payload,
+                       item_fingerprint,status
+                FROM trade_item_operations WHERE trade_id=? ORDER BY created_at,operation_id
+                """)) {
+            statement.setString(1, tradeId.toString());
+            try (var result = statement.executeQuery()) {
+                while (result.next()) {
+                    items.add(new TradeEscrowRecord(
+                            UUID.fromString(result.getString("operation_id")),
+                            UUID.fromString(result.getString("trade_id")),
+                            UUID.fromString(result.getString("owner_uuid")),
+                            UUID.fromString(result.getString("recipient_uuid")),
+                            result.getBytes("item_payload"),
+                            result.getString("item_fingerprint"),
+                            result.getString("status")));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudieron consultar los objetos del intercambio.");
+            return java.util.List.of();
         }
     }
 
