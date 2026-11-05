@@ -124,6 +124,7 @@ public class SalchichonHardcore extends JavaPlugin {
         TradeCommand tradeExecutor = new TradeCommand(this, tradeService);
         tradeCommand.setExecutor(tradeExecutor);
         tradeCommand.setTabCompleter(tradeExecutor);
+        getServer().getPluginManager().registerEvents(tradeExecutor, this);
         getServer().getPluginManager().registerEvents(tradeService, this);
         getServer().getPluginManager().registerEvents(new TradeMenuListener(tradeService), this);
 
