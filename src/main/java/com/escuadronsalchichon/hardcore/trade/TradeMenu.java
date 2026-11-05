@@ -12,20 +12,22 @@ import java.util.List;
 import java.util.UUID;
 
 public final class TradeMenu {
-    private static final int PAGE_SIZE = 20;
+    static final int PAGE_SIZE = 20;
 
     private TradeMenu() {}
 
     public static Inventory create(UUID viewer, TradeSessionRecord session,
                                    List<TradeEscrowRecord> records, int page) {
-        List<TradeEscrowRecord> aItems = records.stream()
+        List<TradeEscrowRecord> activeRecords = records.stream()
+                .filter(item -> !"RETURNED".equals(item.status())).toList();
+        List<TradeEscrowRecord> aItems = activeRecords.stream()
                 .filter(item -> item.ownerUuid().equals(session.playerA())).toList();
-        List<TradeEscrowRecord> bItems = records.stream()
+        List<TradeEscrowRecord> bItems = activeRecords.stream()
                 .filter(item -> item.ownerUuid().equals(session.playerB())).toList();
         int max = Math.max(aItems.size(), bItems.size());
         int pages = Math.max(1, (max + PAGE_SIZE - 1) / PAGE_SIZE);
         int current = Math.max(0, Math.min(page, pages - 1));
-        TradeMenuHolder holder = new TradeMenuHolder(viewer, session, records,
+        TradeMenuHolder holder = new TradeMenuHolder(viewer, session, activeRecords,
                 current, current > 0, current + 1 < pages);
         Inventory inventory = Bukkit.createInventory(holder, 54,
                 Component.text("Intercambio · " + (current + 1) + "/" + pages));
