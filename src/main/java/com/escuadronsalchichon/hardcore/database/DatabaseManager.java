@@ -1403,7 +1403,7 @@ public class DatabaseManager implements PlayerDataStore {
             UUID operationId;
             try (PreparedStatement update = connection.prepareStatement("""
                     UPDATE vault_claims SET status='DELIVERED', delivered_at=CURRENT_TIMESTAMP
-                    WHERE claim_id=? AND player_uuid=? AND status='DELIVERING'
+                    WHERE claim_id=? AND player_uuid=? AND status IN ('DELIVERING','RECOVERY_REQUIRED')
                     """)) {
                 update.setString(1, claimId.toString());
                 update.setString(2, playerUuid.toString());
@@ -1418,7 +1418,7 @@ public class DatabaseManager implements PlayerDataStore {
             }
             try (PreparedStatement operation = connection.prepareStatement("""
                     UPDATE vault_operations SET status='DELIVERED', updated_at=CURRENT_TIMESTAMP
-                    WHERE operation_id=? AND status='DELIVERY_PENDING'
+                    WHERE operation_id=? AND status IN ('DELIVERY_PENDING','RECOVERY_REQUIRED')
                     """)) {
                 operation.setString(1, operationId.toString());
                 if (operation.executeUpdate() != 1) throw new SQLException("Estado de operación inconsistente");
@@ -1446,6 +1446,32 @@ public class DatabaseManager implements PlayerDataStore {
     }
 
 
+
+    @Override
+    public synchronized java.util.List<VaultClaimRecord> getUncertainVaultClaims(UUID playerUuid) {
+        if (!isConnected() || playerUuid == null) return null;
+        java.util.List<VaultClaimRecord> claims = new java.util.ArrayList<>();
+        try (PreparedStatement query = connection.prepareStatement("""
+                SELECT claim_id,operation_id,item_payload,material,amount,status
+                FROM vault_claims
+                WHERE player_uuid=? AND status IN ('PENDING','DELIVERING','RECOVERY_REQUIRED')
+                ORDER BY created_at,claim_id
+                """)) {
+            query.setString(1, playerUuid.toString());
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) claims.add(new VaultClaimRecord(
+                        UUID.fromString(rows.getString("claim_id")),
+                        UUID.fromString(rows.getString("operation_id")), playerUuid,
+                        rows.getString("material"), rows.getInt("amount"),
+                        rows.getBytes("item_payload"), rows.getString("status")));
+            }
+            return java.util.List.copyOf(claims);
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron consultar reclamaciones de retiro inciertas.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
 
     @Override
     public synchronized boolean updatePlayerSkin(UUID uuid, String textureHash) {
