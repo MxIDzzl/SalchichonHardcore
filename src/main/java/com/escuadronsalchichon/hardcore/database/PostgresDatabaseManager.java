@@ -525,7 +525,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                      SELECT operation_id,material,amount,item_payload,credited_value,created_at,status
                      FROM vault_operations
                      WHERE player_uuid=? AND operation_type='DEPOSIT'
-                       AND status IN ('PREPARED','RECOVERY_REQUIRED')
+                       AND status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED')
                      ORDER BY created_at,operation_id
                      """)) {
             query.setObject(1, uuid);
