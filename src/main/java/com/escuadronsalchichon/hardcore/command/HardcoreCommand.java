@@ -109,6 +109,46 @@ public class HardcoreCommand implements CommandExecutor {
             return true;
         }
 
+        if (subcommand.equals("trade-status")) {
+            if (args.length != 2) {
+                sender.sendMessage("§cUso: /hardcore trade-status <jugador>");
+                return true;
+            }
+            String targetName = args[1];
+            sender.sendMessage("§8Consultando el estado durable del intercambio...");
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                PlayerData target = databaseManager.getPlayerByName(targetName);
+                var session = target == null ? null : databaseManager.getActiveTrade(target.getUuid());
+                var items = session == null ? java.util.List.<com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord>of()
+                        : databaseManager.getTradeItems(session.tradeId());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (target == null) {
+                        sender.sendMessage("§cNo se encontró ese jugador.");
+                        return;
+                    }
+                    if (session == null) {
+                        sender.sendMessage("§7" + target.getUsername() + " no tiene un intercambio activo.");
+                        return;
+                    }
+                    sender.sendMessage("§d§lTrade recovery — solo lectura");
+                    sender.sendMessage("§7ID: §f" + session.tradeId());
+                    sender.sendMessage("§7Estado: §f" + session.status() + " §8| §7Revisión: §f" + session.revision());
+                    sender.sendMessage("§7A: §f" + session.playerA() + " §8| §7B: §f" + session.playerB());
+                    sender.sendMessage("§7Confirmaciones actuales: §f" + session.isConfirmed(session.playerA())
+                            + " §8/ §f" + session.isConfirmed(session.playerB()));
+                    sender.sendMessage("§7Operaciones: §f" + items.size());
+                    for (var item : items) {
+                        sender.sendMessage("§8• §f" + item.operationId().toString().substring(0, 8)
+                                + " §7" + item.status()
+                                + " §8| §7owner " + item.ownerUuid().toString().substring(0, 8)
+                                + " §8→ §7recipient " + item.recipientUuid().toString().substring(0, 8));
+                    }
+                    sender.sendMessage("§cConsulta de solo lectura. No se modificó ni entregó ningún objeto.");
+                });
+            });
+            return true;
+        }
+
         if (args.length < 2) {
             sendUsage(sender);
             return true;
