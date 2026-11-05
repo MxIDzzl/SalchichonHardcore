@@ -18,7 +18,7 @@ commands:
     usage: /trade <jugador|accept|deny|offer|confirm|status|cancel>
   hardcore:
     description: Comandos administrativos de SalchichonHardcore
-    usage: /hardcore <check|restore|reset|stat|vault-status|trade-status|reload|migrate-sqlite>
+    usage: /hardcore <check|restore|reset|stat|vault-status|reload|migrate-sqlite>
     permission: salchichonhardcore.admin
 
 permissions:
