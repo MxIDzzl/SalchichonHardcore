@@ -84,6 +84,16 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
             return;
         }
         inviter.sendMessage("§dInvitación enviada a §f" + target.getName() + "§d.");
+        UUID targetId = target.getUniqueId();
+        UUID inviterId = inviter.getUniqueId();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (invitations.remove(targetId, inviterId)) {
+                Player stillOnline = Bukkit.getPlayer(inviterId);
+                Player invited = Bukkit.getPlayer(targetId);
+                if (stillOnline != null) stillOnline.sendMessage("§7Tu invitación a " + targetName + " expiró.");
+                if (invited != null) invited.sendMessage("§7La invitación de intercambio expiró.");
+            }
+        }, 20L * 60L);
         target.sendMessage("§d§lInvitación de intercambio");
         target.sendMessage("§f" + inviter.getName() + " §7quiere intercambiar objetos contigo.");
         target.sendMessage("§7Escribe §a/trade accept §7o §c/trade deny§7.");
