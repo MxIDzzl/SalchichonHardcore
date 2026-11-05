@@ -2125,7 +2125,7 @@ public class DatabaseManager implements PlayerDataStore {
                     DELETE FROM trade_player_locks
                     WHERE trade_id=? AND NOT EXISTS (
                         SELECT 1 FROM trade_item_operations o
-                        WHERE o.trade_id=? AND o.status<>'RETURNED'
+                        WHERE o.trade_id=?
                     )
                     """)) {
                 for (UUID tradeId : expired) {
