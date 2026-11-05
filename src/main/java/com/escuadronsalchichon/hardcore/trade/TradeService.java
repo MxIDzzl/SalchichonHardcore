@@ -409,25 +409,27 @@ public final class TradeService implements Listener {
                 processingTrades.remove(tradeId);
                 return;
             }
+            UUID completionTradeId = tradeId;
+            List<TradeEscrowRecord> completionItems = List.copyOf(items);
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                boolean completionResult = store.completeTrade(tradeId);
-                if (!completionResult) completionResult = store.completeTrade(tradeId);
-                boolean complete = completionResult;
+                boolean completionResult = store.completeTrade(completionTradeId);
+                if (!completionResult) completionResult = store.completeTrade(completionTradeId);
+                final boolean complete = completionResult;
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    processingTrades.remove(tradeId);
+                    processingTrades.remove(completionTradeId);
                     if (complete) {
                         Set<UUID> participants = new java.util.HashSet<>();
-                        for (TradeEscrowRecord record : items) {
+                        for (TradeEscrowRecord record : completionItems) {
                             participants.add(record.ownerUuid());
                             participants.add(record.recipientUuid());
                         }
-                        tradeParticipants.remove(tradeId);
+                        tradeParticipants.remove(completionTradeId);
                         for (UUID participant : participants) {
                             inventoryLocks.remove(participant);
                             Player online = Bukkit.getPlayer(participant);
                             if (online != null) online.sendMessage("§a§l¡Intercambio completado!");
                         }
-                        plugin.getLogger().info("Intercambio completado: " + tradeId);
+                        plugin.getLogger().info("Intercambio completado: " + completionTradeId);
                     }
                 });
             });
