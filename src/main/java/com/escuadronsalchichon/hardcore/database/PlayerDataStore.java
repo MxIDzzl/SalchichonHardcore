@@ -112,6 +112,8 @@ public interface PlayerDataStore {
 
     boolean completeTrade(UUID tradeId);
 
+    boolean cancelEmptyTrade(UUID tradeId, UUID actor);
+
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
     VaultRecoverySummary getVaultRecoverySummary();
