@@ -242,7 +242,6 @@ public final class TradeService implements Listener {
                     return;
                 }
                 tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
-                tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
                 if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
                     inventoryLocks.add(session.playerA());
                     inventoryLocks.add(session.playerB());
@@ -651,6 +650,7 @@ public final class TradeService implements Listener {
             List<TradeEscrowRecord> items = store.getTradeItems(session.tradeId());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
+                tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
                 if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
                     inventoryLocks.add(session.playerA());
                     inventoryLocks.add(session.playerB());
