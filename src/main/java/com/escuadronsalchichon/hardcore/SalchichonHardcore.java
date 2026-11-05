@@ -17,6 +17,7 @@ import com.escuadronsalchichon.hardcore.manager.PlaytimeTracker;
 import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
 import com.escuadronsalchichon.hardcore.vault.VaultCommand;
 import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
+import com.escuadronsalchichon.hardcore.vault.VaultInventoryService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -28,6 +29,7 @@ public class SalchichonHardcore extends JavaPlugin {
     private WorldRuleManager worldRuleManager;
     private DailyResetManager dailyResetManager;
     private PlaytimeTracker playtimeTracker;
+    private VaultInventoryService vaultInventoryService;
 
     @Override
     public void onEnable() {
@@ -99,8 +101,10 @@ public class SalchichonHardcore extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        valueCommand.setExecutor(new VaultCommand(this, databaseManager));
+        vaultInventoryService = new VaultInventoryService(this, databaseManager);
+        valueCommand.setExecutor(new VaultCommand(this, databaseManager, vaultInventoryService));
         getServer().getPluginManager().registerEvents(new VaultMenuListener(this), this);
+        getServer().getPluginManager().registerEvents(vaultInventoryService, this);
 
         for (var world : Bukkit.getWorlds()) {
             worldRuleManager.applyRules(world);
