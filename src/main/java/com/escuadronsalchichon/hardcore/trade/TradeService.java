@@ -176,11 +176,16 @@ public final class TradeService implements Listener {
     }
 
     public void confirm(Player player) {
+        confirm(player, -1);
+    }
+
+    public void confirm(Player player, long expectedRevision) {
         UUID playerId = player.getUniqueId();
         player.sendMessage("§8Registrando tu confirmación...");
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             TradeSessionRecord session = store.getActiveTrade(playerId);
             boolean confirmed = session != null && session.status() == TradeStatus.OPEN
+                    && (expectedRevision < 0 || session.revision() == expectedRevision)
                     && store.confirmTradeRevision(session.tradeId(), playerId, session.revision());
             TradeSessionRecord updated = confirmed ? store.getActiveTrade(playerId) : null;
             List<TradeEscrowRecord> offered = updated == null ? List.of() : store.getTradeItems(updated.tradeId());
