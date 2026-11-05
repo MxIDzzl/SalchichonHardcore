@@ -498,6 +498,10 @@ public final class TradeService implements Listener {
         }
     }
 
+    private boolean hasMarker(ItemStack item) {
+        return hasMarker(item, escrowMarker) || hasMarker(item, deliveryMarker);
+    }
+
     private boolean hasMarker(ItemStack item, NamespacedKey key) {
         return item != null && item.hasItemMeta()
                 && item.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.STRING);
