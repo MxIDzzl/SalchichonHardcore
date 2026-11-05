@@ -372,6 +372,50 @@ public class DatabaseManager implements PlayerDataStore {
                     )
                     """);
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS trade_item_operations (
+                        operation_id TEXT PRIMARY KEY,
+                        trade_id TEXT NOT NULL,
+                        owner_uuid TEXT NOT NULL,
+                        recipient_uuid TEXT NOT NULL,
+                        item_payload BLOB NOT NULL,
+                        item_fingerprint TEXT NOT NULL CHECK (length(item_fingerprint) = 64),
+                        status TEXT NOT NULL CHECK (status IN (
+                            'PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING','DELIVERED',
+                            'RETURN_PENDING','RETURNED','RECOVERY_REQUIRED'
+                        )),
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        delivered_at TEXT,
+                        CHECK (owner_uuid <> recipient_uuid),
+                        FOREIGN KEY (trade_id) REFERENCES trade_sessions(trade_id) ON DELETE RESTRICT,
+                        FOREIGN KEY (owner_uuid) REFERENCES player_data(uuid),
+                        FOREIGN KEY (recipient_uuid) REFERENCES player_data(uuid)
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_trade_item_operations_recovery
+                    ON trade_item_operations(trade_id, status, created_at)
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_trade_item_operations_player_pending
+                    ON trade_item_operations(recipient_uuid, status)
+                    WHERE status IN ('DELIVERY_PENDING','DELIVERING','RETURN_PENDING','RECOVERY_REQUIRED')
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS trade_player_locks (
+                        player_uuid TEXT PRIMARY KEY,
+                        trade_id TEXT NOT NULL,
+                        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (trade_id, player_uuid),
+                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid) ON DELETE RESTRICT,
+                        FOREIGN KEY (trade_id) REFERENCES trade_sessions(trade_id) ON DELETE RESTRICT
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_trade_player_locks_trade
+                    ON trade_player_locks(trade_id)
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS operation_receipts (
                         operation_id TEXT PRIMARY KEY,
                         player_uuid TEXT NOT NULL,
