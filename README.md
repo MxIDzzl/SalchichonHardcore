@@ -95,3 +95,24 @@ El historial público de cambios, novedades y versiones del servidor se mantiene
 The `/value [page]` command opens a paginated inventory viewer over durable vault records. `/value deposit` supports allow-listed plain items from the main hand. It persists a PDC operation marker and PREPARED journal before removing the stack, then commits the item and aggregate score transactionally. On join, uncertain deposits are reconciled using both the exact marker and a durable state transition: marker present with PREPARED/RECOVERY_REQUIRED means cancel and keep the item; marker absent with DEPOSIT/DELIVERY_PENDING means commit. Ambiguous combinations remain blocked for manual review. Inventory actions are locked while a deposit/recovery is in progress.
 
 The feature remains disabled by default in `config.yml`. Withdrawals now use a durable claim, a plugin-owned PDC marker, inventory save, and atomic claim/operation acknowledgement. Interrupted claims are reconciled only when the exact marked amount is present; missing or partial evidence remains quarantined. Full crash-injection integration tests against SQLite and PostgreSQL are still required. Do not enable Player Value on the live server yet.
+
+
+## Intercambios de objetos
+
+El sistema de intercambio bilateral está implementado en el código, pero permanece **desactivado por defecto** (`trade.enabled: false`) hasta completar pruebas de staging y recuperación.
+
+Comandos disponibles cuando se habilite:
+
+| Comando | Función |
+|---|---|
+| `/trade <jugador>` | Invitar a un jugador conectado |
+| `/trade accept` / `/trade deny` | Aceptar o rechazar una invitación |
+| `/trade` o `/trade status` | Abrir la interfaz bilateral |
+| `/trade offer` | Ofrecer el objeto de la mano principal |
+| Clic en un objeto propio | Retirarlo de la oferta y devolverlo |
+| `/trade confirm` | Confirmar la revisión actual |
+| `/trade cancel` | Cancelar cuando todos los objetos hayan sido devueltos |
+
+Cada cambio de oferta invalida las confirmaciones anteriores. Ambos jugadores deben confirmar la misma revisión. Los objetos se guardan en escrow con marcadores PDC, huellas SHA-256 y estados durables de recuperación. **Player Value, puntos y moneda no son transferibles.**
+
+El administrador puede consultar una operación sin modificarla mediante `/hardcore trade-status <jugador>`. Las operaciones ambiguas se aíslan para revisión manual; no se entregan copias automáticamente. Aún faltan las acciones administrativas de reconciliación, expiración automática y pruebas de fallos/reinicio en staging.
