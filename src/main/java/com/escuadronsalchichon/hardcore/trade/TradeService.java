@@ -508,12 +508,18 @@ public final class TradeService implements Listener {
                     Player b = Bukkit.getPlayer(bId);
                     if (b != null) b.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
                 }
-                if (recovered != null) {
-                    tradeParticipants.put(tradeId, Set.of(recovered.playerA(), recovered.playerB()));
-                    Player a = Bukkit.getPlayer(recovered.playerA());
-                    Player b = Bukkit.getPlayer(recovered.playerB());
-                    if (a != null) { inventoryLocks.add(a.getUniqueId()); a.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados."); }
-                    if (b != null) { inventoryLocks.add(b.getUniqueId()); b.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados."); }
+                Set<UUID> participants = recovered != null
+                        ? Set.of(recovered.playerA(), recovered.playerB())
+                        : knownParticipants;
+                if (participants != null) {
+                    tradeParticipants.put(tradeId, participants);
+                    for (UUID participant : participants) {
+                        Player online = Bukkit.getPlayer(participant);
+                        if (online != null) {
+                            inventoryLocks.add(participant);
+                            online.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados: " + reason);
+                        }
+                    }
                 }
                 plugin.getLogger().warning("Trade " + tradeId + " aislado (" + isolated + "): " + reason);
             });
