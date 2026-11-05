@@ -550,7 +550,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         if (!isConnected() || uuid == null || operationId == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement update = connection.prepareStatement("""
-                     UPDATE vault_operations SET status='ABORTED',updated_at=now()
+                     UPDATE vault_operations SET status='CANCELLED',updated_at=now()
                      WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
                        AND status IN ('PREPARED','RECOVERY_REQUIRED')
                      """)) {
