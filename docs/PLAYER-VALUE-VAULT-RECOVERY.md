@@ -130,3 +130,10 @@ La confirmación transaccional del depósito ahora impide que el agregado `playe
 La consulta `getPendingVaultClaims` devuelve exclusivamente reclamaciones `PENDING`. Las filas `RECOVERY_REQUIRED` quedan fuera del flujo normal y no deben entregarse automáticamente: requieren conciliación manual con evidencia del inventario. Esto evita que una futura rutina de inicio de sesión interprete una operación ambigua como una entrega segura.
 
 Además, `markVaultClaimDelivering` solo permite pasar de `PENDING` a `DELIVERING` cuando existe la operación correspondiente del mismo jugador y sigue en `DELIVERY_PENDING`. La condición se valida en la propia sentencia SQL en SQLite y PostgreSQL. No resuelve la ventana de duplicación entre Bukkit y la base de datos; únicamente impide iniciar entregas desde reclamaciones u operaciones que ya no están en un estado coherente.
+
+
+## Serialización de retiros concurrentes — 2026-11-04
+
+PostgreSQL bloquea ahora primero la fila estable de `player_data` del propietario con `SELECT ... FOR UPDATE` antes de consultar o actualizar `vault_cooldowns`. Esto cubre el caso de un jugador que todavía no tiene fila de cooldown: bloquear únicamente `vault_cooldowns` no bloquea ninguna fila inexistente y permitiría que dos primeras solicitudes compitieran. La fila del jugador serializa esos retiros; después se valida el cooldown y se crea la reclamación dentro de la misma transacción. SQLite ya serializa esta ruta mediante su conexión compartida y método sincronizado.
+
+Esto evita la carrera de cooldown en la capa de persistencia, pero no habilita la función: la entrega física del objeto continúa bloqueada hasta implementar PDC, verificación del inventario y reconciliación tras reinicios.
