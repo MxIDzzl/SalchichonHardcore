@@ -84,6 +84,27 @@ public interface PlayerDataStore {
     /** Returns every nonterminal withdrawal claim for evidence-based recovery. */
     java.util.List<VaultClaimRecord> getUncertainVaultClaims(UUID playerUuid);
 
+    // Item-only trade escrow. All methods are durable and idempotent where noted.
+    boolean createTradeSession(UUID tradeId, UUID playerA, UUID playerB);
+
+    boolean prepareTradeEscrowItem(TradeEscrowItem item);
+
+    boolean markTradeEscrowed(UUID operationId);
+
+    boolean advanceTradeRevision(UUID tradeId, UUID actor, long expectedRevision);
+
+    boolean confirmTradeRevision(UUID tradeId, UUID actor, long expectedRevision);
+
+    boolean lockTradeForSettlement(UUID tradeId, long expectedRevision);
+
+    boolean markTradeItemDelivering(UUID operationId, UUID recipientUuid);
+
+    boolean markTradeItemDelivered(UUID operationId, UUID recipientUuid);
+
+    boolean markTradeRecoveryRequired(UUID tradeId);
+
+    boolean completeTrade(UUID tradeId);
+
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
     VaultRecoverySummary getVaultRecoverySummary();
