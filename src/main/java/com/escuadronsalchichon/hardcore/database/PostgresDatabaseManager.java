@@ -1190,7 +1190,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE trade_item_operations SET status='ESCROWED',updated_at=now()
-                     WHERE operation_id=? AND status='PREPARED'
+                     WHERE operation_id=? AND status IN ('PREPARED','ESCROWED')
                      """)) {
             statement.setObject(1, operationId);
             return statement.executeUpdate() == 1;
@@ -1312,7 +1312,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE trade_item_operations SET status='DELIVERED',delivered_at=now(),updated_at=now()
-                     WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERING'
+                     WHERE operation_id=? AND recipient_uuid=? AND status IN ('DELIVERING','DELIVERED')
                      """)) {
             statement.setObject(1, operationId);
             statement.setObject(2, recipientUuid);
