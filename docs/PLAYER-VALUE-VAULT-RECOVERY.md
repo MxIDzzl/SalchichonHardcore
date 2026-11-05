@@ -61,7 +61,7 @@ The claim marker must be a plugin-owned PDC key and must never be copied from us
 
 ## Current status
 
-The schema and configuration groundwork exist. The actual vault service, inventory GUI, operation journal adapters, recovery listener, and the tests above are not yet implemented. `player-value.enabled` must remain `false`.
+The schema, SQLite/PostgreSQL journal adapters, paginated read-only inventory viewer, marked deposit path, and evidence-based join recovery are implemented. Withdrawal delivery/recovery and the full crash-injection integration suite are still outstanding. `player-value.enabled` must remain `false`.
 
 ## Startup quarantine implemented
 
@@ -117,7 +117,7 @@ Deposits now expose three persistence operations in both SQLite and PostgreSQL:
 
 At startup, `flagUncertainVaultOperations` also moves every remaining `DEPOSIT/PREPARED` row to `RECOVERY_REQUIRED`. This is deliberately conservative: the current database layer cannot prove whether Bukkit inventory mutation happened before the process stopped. Quarantined rows must not be automatically committed or cancelled. They keep the player's active-operation lock and require an inventory-aware reconciliation procedure.
 
-**Safety boundary:** the Bukkit inventory adapter, persistent item marker/fingerprint, automated reconciliation, and crash-boundary integration tests are not implemented yet. Therefore this journal is a persistence primitive, not a complete crash-safe deposit flow. Keep Player Value disabled until those pieces and staging tests are complete.
+**Historical safety boundary (before the 2026-11-05 deposit adapter):** at that point the Bukkit inventory adapter, persistent marker, and automated reconciliation had not yet been implemented. The current implementation is described in the later sections below. Withdrawal recovery, crash-injection integration tests, and staging validation remain release gates.
 
 
 ### Validación adicional de límites numéricos — 2026-11-04
