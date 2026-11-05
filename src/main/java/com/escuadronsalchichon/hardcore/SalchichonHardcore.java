@@ -15,6 +15,8 @@ import com.escuadronsalchichon.hardcore.manager.DailyResetManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.manager.PlaytimeTracker;
 import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
+import com.escuadronsalchichon.hardcore.vault.VaultCommand;
+import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -91,6 +93,14 @@ public class SalchichonHardcore extends JavaPlugin {
         hardcoreCommand.setExecutor(
                 new HardcoreCommand(this, databaseManager, bossBarManager, playerManager)
         );
+        var valueCommand = getCommand("value");
+        if (valueCommand == null) {
+            getLogger().severe("No se pudo registrar el comando value. Revisa plugin.yml.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        valueCommand.setExecutor(new VaultCommand(this, databaseManager));
+        getServer().getPluginManager().registerEvents(new VaultMenuListener(this), this);
 
         for (var world : Bukkit.getWorlds()) {
             worldRuleManager.applyRules(world);
