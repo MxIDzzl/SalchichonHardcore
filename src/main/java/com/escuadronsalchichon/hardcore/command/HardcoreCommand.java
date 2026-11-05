@@ -281,6 +281,7 @@ public class HardcoreCommand implements CommandExecutor {
         sender.sendMessage("§6§lSalchichonHardcore");
         sender.sendMessage("§e/hardcore check <jugador>");
         sender.sendMessage("§e/hardcore vault-status §7(estado interno, solo lectura)");
+        sender.sendMessage("§e/hardcore trade-status <jugador> §7(escrow, solo lectura)");
         sender.sendMessage("§e/hardcore restore <jugador> <motivo>");
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
         sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
