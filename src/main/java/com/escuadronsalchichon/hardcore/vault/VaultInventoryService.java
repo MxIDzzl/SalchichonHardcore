@@ -172,8 +172,8 @@ public final class VaultInventoryService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (pending == null) {
-                    player.sendMessage("§cNo se pudo revisar una operación Player Value. Tu inventario queda protegido hasta poder verificarla.");
-                    plugin.getLogger().warning("No se pudo recuperar la bóveda de " + player.getName() + "; se mantiene bloqueado el inventario.");
+                    player.sendMessage("§cNo se pudo revisar una operación Player Value. El almacén queda bloqueado hasta poder verificarla.");
+                    plugin.getLogger().warning("No se pudo recuperar la bóveda de " + player.getName() + "; se mantiene bloqueado Player Value.");
                     return;
                 }
                 recoverNext(player, pending, 0);
