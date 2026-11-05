@@ -38,6 +38,7 @@ public final class TradeService implements Listener {
     private final NamespacedKey deliveryMarker;
     private final Set<UUID> inventoryLocks = ConcurrentHashMap.newKeySet();
     private final Set<UUID> processingTrades = ConcurrentHashMap.newKeySet();
+    private final java.util.concurrent.ConcurrentMap<UUID, Set<UUID>> tradeParticipants = new ConcurrentHashMap<>();
 
     public TradeService(SalchichonHardcore plugin, PlayerDataStore store) {
         this.plugin = plugin;
@@ -65,6 +66,7 @@ public final class TradeService implements Listener {
                     b.sendMessage("§cNo se pudo iniciar el intercambio.");
                     return;
                 }
+                tradeParticipants.put(tradeId, Set.of(aId, bId));
                 a.sendMessage("§dIntercambio iniciado con §f" + b.getName() + "§d. Usa §f/trade offer §dpara ofrecer el objeto de tu mano.");
                 b.sendMessage("§dIntercambio iniciado con §f" + a.getName() + "§d. Usa §f/trade offer §dpara ofrecer objetos.");
                 sendStatus(a, tradeId);
@@ -218,6 +220,7 @@ public final class TradeService implements Listener {
                     player.sendMessage("§cSolo puedes cancelar un intercambio abierto que todavía no tenga objetos ofrecidos.");
                     return;
                 }
+                tradeParticipants.remove(session.tradeId());
                 inventoryLocks.remove(session.playerA());
                 inventoryLocks.remove(session.playerB());
                 player.sendMessage("§7Intercambio cancelado.");
@@ -238,6 +241,8 @@ public final class TradeService implements Listener {
                     player.sendMessage("§7No tienes un intercambio activo. Usa §f/trade <jugador>§7 para invitar a alguien.");
                     return;
                 }
+                tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
+                tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
                 if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
                     inventoryLocks.add(session.playerA());
                     inventoryLocks.add(session.playerB());
@@ -261,6 +266,7 @@ public final class TradeService implements Listener {
                     player.sendMessage("§7No tienes un intercambio activo.");
                     return;
                 }
+                tradeParticipants.put(session.tradeId(), Set.of(session.playerA(), session.playerB()));
                 player.sendMessage("§d§lIntercambio");
                 player.sendMessage("§7Estado: §f" + session.status() + " §8| §7Revisión: §f" + session.revision());
                 player.sendMessage("§7Participante: §f" + Bukkit.getOfflinePlayer(session.other(playerId)).getName());
@@ -297,6 +303,7 @@ public final class TradeService implements Listener {
                             participants.add(record.ownerUuid());
                             participants.add(record.recipientUuid());
                         }
+                        tradeParticipants.remove(tradeId);
                         for (UUID participant : participants) {
                             inventoryLocks.remove(participant);
                             Player online = Bukkit.getPlayer(participant);
@@ -432,6 +439,10 @@ public final class TradeService implements Listener {
                             quarantine(tradeId, null, null, "El objeto está marcado pero falta el acuse durable.");
                             return;
                         }
+                        if (!recipient.isOnline()) {
+                            processItems(tradeId, allItems, index + 1);
+                            return;
+                        }
                         if (!stripOperationMarker(recipient, deliveryMarker, item.operationId()) || !savePlayer(recipient)) {
                             quarantine(tradeId, null, null, "No se pudo limpiar el marcador tras confirmar la entrega.");
                             return;
@@ -450,8 +461,15 @@ public final class TradeService implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             boolean acknowledged = store.markTradeItemDelivered(item.operationId(), recipient.getUniqueId());
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!acknowledged || !stripOperationMarker(recipient, deliveryMarker, item.operationId())
-                        || !savePlayer(recipient)) {
+                if (!acknowledged) {
+                    quarantine(tradeId, null, null, "No se pudo confirmar la entrega recuperada.");
+                    return;
+                }
+                if (!recipient.isOnline()) {
+                    processingTrades.remove(tradeId);
+                    return;
+                }
+                if (!stripOperationMarker(recipient, deliveryMarker, item.operationId()) || !savePlayer(recipient)) {
                     quarantine(tradeId, null, null, "No se pudo cerrar una entrega recuperada.");
                     return;
                 }
@@ -462,9 +480,13 @@ public final class TradeService implements Listener {
     }
 
     private void quarantine(UUID tradeId, UUID aId, UUID bId, String reason) {
+        Set<UUID> knownParticipants = tradeParticipants.get(tradeId);
+        if (aId == null && bId == null && knownParticipants != null) {
+            for (UUID participant : knownParticipants) inventoryLocks.add(participant);
+        }
         if (aId != null) inventoryLocks.add(aId);
         if (bId != null) inventoryLocks.add(bId);
-        List<UUID> onlineIds = aId == null && bId == null
+        List<UUID> onlineIds = aId == null && bId == null && knownParticipants == null
                 ? Bukkit.getOnlinePlayers().stream().map(Player::getUniqueId).toList()
                 : List.of();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
@@ -488,6 +510,7 @@ public final class TradeService implements Listener {
                     if (b != null) b.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
                 }
                 if (recovered != null) {
+                    tradeParticipants.put(tradeId, Set.of(recovered.playerA(), recovered.playerB()));
                     Player a = Bukkit.getPlayer(recovered.playerA());
                     Player b = Bukkit.getPlayer(recovered.playerB());
                     if (a != null) { inventoryLocks.add(a.getUniqueId()); a.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados."); }
