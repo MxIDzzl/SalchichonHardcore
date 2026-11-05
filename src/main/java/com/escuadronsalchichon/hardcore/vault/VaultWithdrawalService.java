@@ -248,23 +248,35 @@ public final class VaultWithdrawalService implements Listener {
     }
 
     private void clearMarker(Player player, UUID claimId) {
-        for (ItemStack item : player.getInventory().getContents()) {
+        ItemStack[] contents = player.getInventory().getContents();
+        boolean changed = false;
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
             if (item == null || !item.hasItemMeta()) continue;
             ItemMeta meta = item.getItemMeta();
             String marker = meta.getPersistentDataContainer().get(claimMarker, PersistentDataType.STRING);
             if (!claimId.toString().equals(marker)) continue;
             meta.getPersistentDataContainer().remove(claimMarker);
             item.setItemMeta(meta);
+            contents[i] = item;
+            changed = true;
         }
+        if (changed) player.getInventory().setContents(contents);
     }
 
     private void clearOrphanMarkers(Player player) {
-        for (ItemStack item : player.getInventory().getContents()) {
+        ItemStack[] contents = player.getInventory().getContents();
+        boolean changed = false;
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
             if (item == null || !item.hasItemMeta()) continue;
             ItemMeta meta = item.getItemMeta();
             if (!meta.getPersistentDataContainer().has(claimMarker, PersistentDataType.STRING)) continue;
             meta.getPersistentDataContainer().remove(claimMarker);
             item.setItemMeta(meta);
+            contents[i] = item;
+            changed = true;
         }
+        if (changed) player.getInventory().setContents(contents);
     }
 }
