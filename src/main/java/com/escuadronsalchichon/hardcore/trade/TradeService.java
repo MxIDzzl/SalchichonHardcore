@@ -145,8 +145,9 @@ public final class TradeService implements Listener {
                     return;
                 }
                 if (!prepared) {
-                    inventoryLocks.remove(playerId);
-                    player.sendMessage("§cNo se pudo preparar el escrow. El objeto no fue retirado.");
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "No se pudo confirmar la preparación del escrow; el resultado de la transacción es incierto.");
+                    player.sendMessage("§cEl depósito no se retiró. El intercambio quedó aislado porque no se pudo verificar el registro durable.");
                     return;
                 }
                 ItemStack current = player.getInventory().getItemInMainHand();
@@ -216,20 +217,36 @@ public final class TradeService implements Listener {
             boolean hasEscrowedItems = offered.stream().anyMatch(item -> "ESCROWED".equals(item.status()));
             boolean allItemsReady = offered.stream().allMatch(item ->
                     "ESCROWED".equals(item.status()) || "RETURNED".equals(item.status()));
-            boolean locked = updated != null && updated.bothConfirmed() && hasEscrowedItems && allItemsReady
-                    && store.lockTradeForSettlement(updated.tradeId(), updated.revision());
+            boolean locked = updated != null && updated.status() == TradeStatus.LOCKED;
+            if (!locked && updated != null && updated.status() == TradeStatus.OPEN
+                    && updated.bothConfirmed() && hasEscrowedItems && allItemsReady) {
+                locked = store.lockTradeForSettlement(updated.tradeId(), updated.revision());
+            }
+            if (!locked && updated != null) {
+                TradeSessionRecord latest = store.getActiveTrade(playerId);
+                if (latest != null && latest.status() == TradeStatus.LOCKED) {
+                    updated = latest;
+                    locked = true;
+                }
+            }
+            TradeSessionRecord resultSession = updated;
+            boolean settlementLocked = locked;
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (!confirmed) {
                     player.sendMessage("§cNo se pudo confirmar: no hay una oferta abierta o esta cambió.");
                     return;
                 }
-                if (!locked) {
-                    if (updated != null && updated.bothConfirmed() && !hasEscrowedItems) {
+                if (!settlementLocked) {
+                    if (resultSession != null && resultSession.status() == TradeStatus.RECOVERY_REQUIRED) {
+                        player.sendMessage("§cEl intercambio requiere revisión administrativa y no puede confirmarse.");
+                        return;
+                    }
+                    if (resultSession != null && resultSession.bothConfirmed() && !hasEscrowedItems) {
                         player.sendMessage("§eAmbos confirmaron, pero no hay objetos disponibles en escrow. Ofrece un objeto antes de confirmar.");
                         return;
                     }
-                    if (updated != null && updated.bothConfirmed() && !allItemsReady) {
+                    if (resultSession != null && resultSession.bothConfirmed() && !allItemsReady) {
                         player.sendMessage("§eEspera a que terminen de procesarse las devoluciones antes de confirmar.");
                         return;
                     }
@@ -239,7 +256,7 @@ public final class TradeService implements Listener {
                     return;
                 }
                 player.sendMessage("§eAmbos confirmaron. El intercambio quedó bloqueado y comenzó la entrega segura.");
-                resumeTrade(updated.tradeId());
+                resumeTrade(resultSession.tradeId());
             });
         });
     }
