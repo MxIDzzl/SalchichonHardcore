@@ -1916,14 +1916,14 @@ public class DatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try (var update = connection.prepareStatement("""
                     UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP
-                    WHERE trade_id=? AND status='LOCKED'
+                    WHERE trade_id=? AND status IN ('OPEN','LOCKED')
                     """)) {
                 update.setString(1, tradeId.toString());
                 if (update.executeUpdate() != 1) { connection.rollback(); return false; }
             }
             try (var updateItems = connection.prepareStatement("""
                     UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP
-                    WHERE trade_id=? AND status IN ('DELIVERY_PENDING','DELIVERING')
+                    WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING')
                     """)) {
                 updateItems.setString(1, tradeId.toString());
                 updateItems.executeUpdate();
