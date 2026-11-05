@@ -22,7 +22,8 @@ database:
       validation-timeout-ms: 5000
       max-lifetime-ms: 1800000
 
-# Bóveda Player Value: aún no está habilitada hasta completar su lógica y pruebas.
+# Player Value incluye visor y depósitos con marcador/reconciliación. Los retiros siguen sin habilitarse;
+# mantenerlo apagado hasta completar pruebas de integración y validación en staging.
 player-value:
   enabled: false
   cooldown-seconds: 5
