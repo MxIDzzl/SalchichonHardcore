@@ -7,17 +7,22 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.*;
 
 class TradeEscrowRecordTest {
+    private TradeEscrowRecord record(String status) {
+        byte[] payload = {4, 5, 6};
+        return new TradeEscrowRecord(UUID.randomUUID(), UUID.randomUUID(),
+                UUID.randomUUID(), UUID.randomUUID(), payload,
+                TradeEscrowItem.fingerprint(payload), status);
+    }
+
     @Test
     void defensivelyCopiesPayloadAndValidatesFingerprint() {
         byte[] payload = {4, 5, 6};
         TradeEscrowRecord record = new TradeEscrowRecord(UUID.randomUUID(), UUID.randomUUID(),
                 UUID.randomUUID(), UUID.randomUUID(), payload,
                 TradeEscrowItem.fingerprint(payload), "ESCROWED");
-
         payload[0] = 0;
         byte[] copy = record.payload();
         copy[1] = 0;
-
         assertArrayEquals(new byte[]{4, 5, 6}, record.payload());
     }
 
@@ -44,5 +49,10 @@ class TradeEscrowRecordTest {
         assertThrows(IllegalArgumentException.class, () -> new TradeEscrowRecord(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
                 payload, "0".repeat(64), "ESCROWED"));
+    }
+
+    @Test
+    void rejectsUnknownPersistedOperationStatus() {
+        assertThrows(IllegalArgumentException.class, () -> record("FINISHED"));
     }
 }
