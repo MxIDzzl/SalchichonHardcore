@@ -98,7 +98,11 @@ public final class VaultWithdrawalService implements Listener {
                     return;
                 }
                 if (claims.isEmpty()) {
-                    clearOrphanMarkers(player);
+                    if (hasAnyClaimMarker(player)) {
+                        inventoryLocks.quarantineExternalOperation(uuid);
+                        player.sendMessage("Hay un marcador de retiro sin una reclamación verificable. Requiere revisión manual.");
+                        return;
+                    }
                     player.saveData();
                     return;
                 }
