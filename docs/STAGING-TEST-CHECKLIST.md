@@ -26,11 +26,11 @@ This build is for a maintenance-window staging test only. It is not a production
 
 ## Do not test / do not assume
 
-- Player Value vault is not implemented; its configuration must stay disabled.
-- The trade workflow is implemented but remains disabled by default and is not release-ready. Do not enable it on production.
-- PostgreSQL importer and backend are not production-ready. The API v1 document is a contract only, not a running service.
-- The API contract does not authorize exposing PostgreSQL or plugin credentials to the public website.
-- This build does not include the separate website or admin panel.
+- Player Value viewer, deposits, withdrawals, PDC markers, durable claims, and conservative recovery are implemented. Keep `player-value.enabled: false` until crash-injection tests, staging inventory validation, and backup/restore are complete.
+- The item-only trade workflow, bilateral GUI, revision-bound confirmations, escrow, returns, settlement, and expiry are implemented. Keep `trade.enabled: false` except on disposable staging accounts/worlds. Staff reconciliation for `RECOVERY_REQUIRED` and automated crash-injection coverage remain release gates.
+- PostgreSQL schema/pool and the one-way legacy SQLite importer are implemented, but PostgreSQL remains disabled. Do not perform a production cutover until a fresh-database import and full integration/rollback rehearsal pass.
+- The read-only API and public web portal are separate services in `SalchichonSMP-Updates`; this plugin repository does not bundle or deploy them. No browser receives database credentials.
+- The admin page is informational only; no real admin authentication or mutation endpoints exist yet.
 
 ## Rollback
 
