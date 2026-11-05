@@ -77,7 +77,7 @@ public final class TradeService implements Listener {
     }
 
     public void offer(Player player) {
-        if (!plugin.getConfig().getBoolean("trade.enabled", true)) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
             player.sendMessage("§cLos intercambios están desactivados por configuración.");
             return;
         }
