@@ -78,6 +78,16 @@ public final class VaultWithdrawalService implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
+        scheduleJoinRecovery(player);
+    }
+
+    private void scheduleJoinRecovery(Player player) {
+        UUID uuid = player.getUniqueId();
+        if (!player.isOnline()) return;
+        if (inventoryLocks.isRecoveryPending(uuid)) {
+            Bukkit.getScheduler().runTaskLater(plugin, () -> scheduleJoinRecovery(player), 20L);
+            return;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             List<VaultClaimRecord> claims = store.getUncertainVaultClaims(uuid);
             Bukkit.getScheduler().runTask(plugin, () -> {
