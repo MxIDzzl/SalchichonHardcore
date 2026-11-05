@@ -10,9 +10,11 @@ import org.bukkit.entity.Player;
 
 public final class VaultMenuListener implements Listener {
     private final SalchichonHardcore plugin;
+    private final VaultWithdrawalService withdrawals;
 
-    public VaultMenuListener(SalchichonHardcore plugin) {
+    public VaultMenuListener(SalchichonHardcore plugin, VaultWithdrawalService withdrawals) {
         this.plugin = plugin;
+        this.withdrawals = withdrawals;
     }
 
     @EventHandler
@@ -26,10 +28,15 @@ public final class VaultMenuListener implements Listener {
         }
         if (event.getClickedInventory() == null || event.getClickedInventory() != event.getView().getTopInventory()) return;
 
-        if (event.getRawSlot() == 45 && holder.hasPrevious()) {
+        int slot = event.getRawSlot();
+        if (slot == 45 && holder.hasPrevious()) {
             openPage(player, holder.page() - 1);
-        } else if (event.getRawSlot() == 53 && holder.hasNext()) {
+        } else if (slot == 53 && holder.hasNext()) {
             openPage(player, holder.page() + 1);
+        } else if (slot >= 0 && slot < holder.items().size()) {
+            var item = holder.items().get(slot);
+            player.closeInventory();
+            withdrawals.withdraw(player, item);
         }
     }
 
