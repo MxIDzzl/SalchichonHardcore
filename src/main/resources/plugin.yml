@@ -8,6 +8,7 @@ description: Sistema hardcore diario para Escuadron Salchichon.
 softdepend:
   - PlaceholderAPI
   - SkinsRestorer
+  - SkinsRestorer
 
 commands:
   hardcore:
