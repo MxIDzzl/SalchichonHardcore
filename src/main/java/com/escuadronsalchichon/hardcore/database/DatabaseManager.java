@@ -1033,7 +1033,7 @@ public class DatabaseManager implements PlayerDataStore {
                 try (ResultSet row = query.executeQuery()) {
                     if (!row.next()) { connection.rollback(); return false; }
                     if ("COMMITTED".equals(row.getString("status"))) { connection.commit(); return true; }
-                    if (!"PREPARED".equals(row.getString("status")) && !"RECOVERY_REQUIRED".equals(row.getString("status"))) { connection.rollback(); return false; }
+                    if (!"DELIVERY_PENDING".equals(row.getString("status"))) { connection.rollback(); return false; }
                     material=row.getString("material"); amount=row.getInt("amount"); payload=row.getBytes("item_payload");
                     value=row.getLong("credited_value"); createdAt=java.time.Instant.parse(row.getString("created_at"));
                 }
@@ -1056,7 +1056,7 @@ public class DatabaseManager implements PlayerDataStore {
                 if (stats.executeUpdate() != 1) throw new SQLException("El Player Value excedería el límite BIGINT.");
             }
             try (PreparedStatement update = connection.prepareStatement("""
-                    UPDATE vault_operations SET status='COMMITTED',updated_at=? WHERE operation_id=? AND player_uuid=? AND status IN ('PREPARED','RECOVERY_REQUIRED')
+                    UPDATE vault_operations SET status='COMMITTED',updated_at=? WHERE operation_id=? AND player_uuid=? AND status='DELIVERY_PENDING'
                     """)) {
                 update.setString(1, java.time.Instant.now().toString()); update.setString(2, operationId.toString());
                 update.setString(3, uuid.toString());
@@ -1075,11 +1075,11 @@ public class DatabaseManager implements PlayerDataStore {
 
 
     @Override
-    public synchronized java.util.List<VaultItemRecord> getUncertainVaultDeposits(UUID uuid) {
+    public synchronized java.util.List<VaultDepositRecoveryRecord> getUncertainVaultDeposits(UUID uuid) {
         if (!isConnected() || uuid == null) return null;
-        java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
+        java.util.List<VaultDepositRecoveryRecord> items = new java.util.ArrayList<>();
         try (PreparedStatement query = connection.prepareStatement("""
-                SELECT operation_id,material,amount,item_payload,credited_value,created_at
+                SELECT operation_id,material,amount,item_payload,credited_value,created_at,status
                 FROM vault_operations
                 WHERE player_uuid=? AND operation_type='DEPOSIT'
                   AND status IN ('PREPARED','RECOVERY_REQUIRED')
@@ -1087,16 +1087,36 @@ public class DatabaseManager implements PlayerDataStore {
                 """)) {
             query.setString(1, uuid.toString());
             try (ResultSet rows = query.executeQuery()) {
-                while (rows.next()) items.add(new VaultItemRecord(
-                        UUID.fromString(rows.getString("operation_id")), uuid, rows.getString("material"),
-                        rows.getInt("amount"), rows.getBytes("item_payload"), rows.getLong("credited_value"),
-                        java.time.Instant.parse(rows.getString("created_at"))));
+                while (rows.next()) {
+                    VaultItemRecord item = new VaultItemRecord(
+                            UUID.fromString(rows.getString("operation_id")), uuid, rows.getString("material"),
+                            rows.getInt("amount"), rows.getBytes("item_payload"), rows.getLong("credited_value"),
+                            java.time.Instant.parse(rows.getString("created_at")));
+                    items.add(new VaultDepositRecoveryRecord(item, rows.getString("status")));
+                }
             }
             return java.util.List.copyOf(items);
         } catch (SQLException | RuntimeException exception) {
             plugin.getLogger().severe("No se pudieron consultar depósitos Player Value en recuperación.");
             exception.printStackTrace();
             return null;
+        }
+    }
+
+    @Override
+    public synchronized boolean markVaultDepositInventoryRemoved(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (PreparedStatement update = connection.prepareStatement("""
+                UPDATE vault_operations SET status='DELIVERY_PENDING',updated_at=CURRENT_TIMESTAMP
+                WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
+                """)) {
+            update.setString(1, operationId.toString());
+            update.setString(2, uuid.toString());
+            return update.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar la eliminación del objeto del inventario.");
+            exception.printStackTrace();
+            return false;
         }
     }
 
@@ -1461,7 +1481,7 @@ public class DatabaseManager implements PlayerDataStore {
         if (!isConnected()) return null;
         String sql = """
                 SELECT
-                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='PREPARED' THEN 1 ELSE 0 END),0),
+                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING') THEN 1 ELSE 0 END),0),
                     COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='DELIVERY_PENDING' THEN 1 ELSE 0 END),0),
                     COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END),0),
                     COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END),0)
