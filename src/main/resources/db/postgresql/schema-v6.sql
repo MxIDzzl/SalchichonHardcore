@@ -57,4 +57,3 @@ FROM (
     FROM trade_sessions
     WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
 ) active_participants
-ON CONFLICT (player_uuid) DO NOTHING;
