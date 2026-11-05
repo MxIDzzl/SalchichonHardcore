@@ -23,6 +23,12 @@ public record TradeSessionRecord(
         throw new IllegalArgumentException("Player is not part of this trade.");
     }
 
+    public boolean isConfirmed(UUID player) {
+        if (playerA.equals(player)) return Long.valueOf(revision).equals(confirmedRevisionA);
+        if (playerB.equals(player)) return Long.valueOf(revision).equals(confirmedRevisionB);
+        return false;
+    }
+
     public boolean bothConfirmed() {
         return Long.valueOf(revision).equals(confirmedRevisionA)
                 && Long.valueOf(revision).equals(confirmedRevisionB);
