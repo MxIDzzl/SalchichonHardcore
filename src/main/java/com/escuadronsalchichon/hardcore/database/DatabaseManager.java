@@ -1104,7 +1104,7 @@ public class DatabaseManager implements PlayerDataStore {
     public synchronized boolean abortVaultDeposit(UUID uuid, UUID operationId) {
         if (!isConnected() || uuid == null || operationId == null) return false;
         try (PreparedStatement update = connection.prepareStatement("""
-                UPDATE vault_operations SET status='ABORTED',updated_at=CURRENT_TIMESTAMP
+                UPDATE vault_operations SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP
                 WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
                   AND status IN ('PREPARED','RECOVERY_REQUIRED')
                 """)) {
