@@ -95,8 +95,6 @@ public final class TradeService implements Listener {
             return;
         }
         ItemStack payloadItem = original.clone();
-        TradeEscrowItem escrow = null;
-        UUID tradeId = null;
         player.sendMessage("§8Preparando objeto para escrow...");
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             TradeSessionRecord session = store.getActiveTrade(playerId);
@@ -282,6 +280,11 @@ public final class TradeService implements Listener {
                 quarantine(tradeId, null, null, "No existe evidencia del marcador de escrow preparado.");
                 return;
             }
+            ItemStack markedEscrow = findOperationMarkedStack(owner, escrowMarker, item.operationId());
+            if (markedEscrow == null || !matchesPayload(markedEscrow, item.payload(), escrowMarker)) {
+                quarantine(tradeId, null, null, "El objeto marcado no coincide con el payload del escrow.");
+                return;
+            }
             removeOperationMarkeredStack(owner, escrowMarker, item.operationId());
             if (!savePlayer(owner)) {
                 quarantine(tradeId, null, null, "No se pudo guardar la recuperación del escrow.");
@@ -291,7 +294,7 @@ public final class TradeService implements Listener {
                 boolean marked = store.markTradeEscrowed(item.operationId());
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!marked) quarantine(tradeId, null, null, "No se pudo confirmar la recuperación del escrow.");
-                    else resumeTrade(tradeId);
+                    else reloadAndProcess(tradeId);
                 });
             });
             return;
@@ -336,7 +339,9 @@ public final class TradeService implements Listener {
             quarantine(tradeId, null, null, "La huella del objeto almacenado no coincide.");
             return;
         }
+        inventoryLocks.add(recipient.getUniqueId());
         if (!canFit(recipient, payload)) {
+            inventoryLocks.remove(recipient.getUniqueId());
             recipient.sendMessage("§eTu inventario está lleno. Libera espacio y usa /trade status para reanudar la entrega.");
             processItems(tradeId, allItems, index + 1);
             return;
@@ -346,7 +351,6 @@ public final class TradeService implements Listener {
             quarantine(tradeId, null, null, "No se pudo escribir el marcador de entrega.");
             return;
         }
-        inventoryLocks.add(recipient.getUniqueId());
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             boolean started = store.markTradeItemDelivering(item.operationId(), recipient.getUniqueId());
             Bukkit.getScheduler().runTask(plugin, () -> {
@@ -400,9 +404,16 @@ public final class TradeService implements Listener {
         if (bId != null) inventoryLocks.add(bId);
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             boolean isolated = store.markTradeRecoveryRequired(tradeId);
+            TradeSessionRecord active = null;
+            if (aId == null && bId == null) {
+                for (Player online : Bukkit.getOnlinePlayers()) {
+                    TradeSessionRecord candidate = store.getActiveTrade(online.getUniqueId());
+                    if (candidate != null && candidate.tradeId().equals(tradeId)) { active = candidate; break; }
+                }
+            }
+            TradeSessionRecord recovered = active;
             Bukkit.getScheduler().runTask(plugin, () -> {
                 processingTrades.remove(tradeId);
-                TradeSessionRecord session = aId == null ? null : null;
                 if (aId != null) {
                     Player a = Bukkit.getPlayer(aId);
                     if (a != null) a.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
@@ -411,17 +422,21 @@ public final class TradeService implements Listener {
                     Player b = Bukkit.getPlayer(bId);
                     if (b != null) b.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
                 }
-                if (aId == null && bId == null) {
-                    for (Player online : Bukkit.getOnlinePlayers()) {
-                        TradeSessionRecord active = store.getActiveTrade(online.getUniqueId());
-                        if (active != null && active.tradeId().equals(tradeId)) {
-                            inventoryLocks.add(online.getUniqueId());
-                            online.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados.");
-                        }
-                    }
+                if (recovered != null) {
+                    Player a = Bukkit.getPlayer(recovered.playerA());
+                    Player b = Bukkit.getPlayer(recovered.playerB());
+                    if (a != null) { inventoryLocks.add(a.getUniqueId()); a.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados."); }
+                    if (b != null) { inventoryLocks.add(b.getUniqueId()); b.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados."); }
                 }
                 plugin.getLogger().warning("Trade " + tradeId + " aislado (" + isolated + "): " + reason);
             });
+        });
+    }
+
+    private void reloadAndProcess(UUID tradeId) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            List<TradeEscrowRecord> items = store.getTradeItems(tradeId);
+            Bukkit.getScheduler().runTask(plugin, () -> processItems(tradeId, items, 0));
         });
     }
 
