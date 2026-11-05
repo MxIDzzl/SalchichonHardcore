@@ -2,6 +2,9 @@ package com.escuadronsalchichon.hardcore.database;
 
 import com.escuadronsalchichon.hardcore.player.PlayerData;
 import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeSessionRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeStatus;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.Connection;
@@ -1018,6 +1021,68 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
 
     private static boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+
+    @Override
+    public TradeSessionRecord getActiveTrade(UUID playerUuid) {
+        if (!isConnected() || playerUuid == null) return null;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT trade_id,player_a,player_b,status,revision,
+                            confirmed_revision_a,confirmed_revision_b
+                     FROM trade_sessions
+                     WHERE (player_a=? OR player_b=?)
+                       AND status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                     ORDER BY created_at DESC LIMIT 1
+                     """)) {
+            statement.setObject(1, playerUuid);
+            statement.setObject(2, playerUuid);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                return new TradeSessionRecord(
+                        result.getObject("trade_id", UUID.class),
+                        result.getObject("player_a", UUID.class),
+                        result.getObject("player_b", UUID.class),
+                        TradeStatus.valueOf(result.getString("status")),
+                        result.getLong("revision"),
+                        (Long) result.getObject("confirmed_revision_a"),
+                        (Long) result.getObject("confirmed_revision_b"));
+            }
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudo consultar el intercambio activo.");
+            return null;
+        }
+    }
+
+    @Override
+    public java.util.List<TradeEscrowRecord> getTradeItems(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return java.util.List.of();
+        java.util.List<TradeEscrowRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT operation_id,trade_id,owner_uuid,recipient_uuid,item_payload,
+                            item_fingerprint,status
+                     FROM trade_item_operations WHERE trade_id=? ORDER BY created_at,operation_id
+                     """)) {
+            statement.setObject(1, tradeId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    items.add(new TradeEscrowRecord(
+                            result.getObject("operation_id", UUID.class),
+                            result.getObject("trade_id", UUID.class),
+                            result.getObject("owner_uuid", UUID.class),
+                            result.getObject("recipient_uuid", UUID.class),
+                            result.getBytes("item_payload"),
+                            result.getString("item_fingerprint").trim(),
+                            result.getString("status")));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudieron consultar los objetos del intercambio.");
+            return java.util.List.of();
+        }
     }
 
     @Override
