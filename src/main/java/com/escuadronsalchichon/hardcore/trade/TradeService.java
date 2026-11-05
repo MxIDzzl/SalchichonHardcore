@@ -322,6 +322,11 @@ public final class TradeService implements Listener {
         if ("DELIVERED".equals(item.status())) {
             Player recipient = Bukkit.getPlayer(item.recipientUuid());
             if (recipient != null && hasOperationMarker(recipient, deliveryMarker, item.operationId())) {
+                ItemStack marked = findOperationMarkedStack(recipient, deliveryMarker, item.operationId());
+                if (marked == null || !matchesPayload(marked, item.payload(), deliveryMarker)) {
+                    quarantine(tradeId, null, null, "El objeto entregado ya no coincide con el payload confirmado.");
+                    return;
+                }
                 if (!stripOperationMarker(recipient, deliveryMarker, item.operationId()) || !savePlayer(recipient)) {
                     quarantine(tradeId, null, null, "No se pudo limpiar el marcador de una entrega confirmada.");
                     return;
@@ -646,13 +651,30 @@ public final class TradeService implements Listener {
         }
     }
 
+    private boolean hasAnyTradeMarker(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (hasMarker(item, escrowMarker) || hasMarker(item, deliveryMarker)) return true;
+        }
+        return false;
+    }
+
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID playerId = player.getUniqueId();
+        boolean markerPresentAtJoin = hasAnyTradeMarker(player);
+        if (markerPresentAtJoin) inventoryLocks.add(playerId);
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             TradeSessionRecord session = store.getActiveTrade(playerId);
-            if (session == null) return;
+            if (session == null) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (markerPresentAtJoin && player.isOnline()) {
+                        inventoryLocks.add(playerId);
+                        player.sendMessage("§cHay un marcador de intercambio sin sesión activa. Tu inventario queda bloqueado para revisión manual.");
+                    }
+                });
+                return;
+            }
             List<TradeEscrowRecord> items = store.getTradeItems(session.tradeId());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
