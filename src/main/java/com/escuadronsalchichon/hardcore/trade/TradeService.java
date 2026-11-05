@@ -189,7 +189,10 @@ public final class TradeService implements Listener {
                     && store.confirmTradeRevision(session.tradeId(), playerId, session.revision());
             TradeSessionRecord updated = confirmed ? store.getActiveTrade(playerId) : null;
             List<TradeEscrowRecord> offered = updated == null ? List.of() : store.getTradeItems(updated.tradeId());
-            boolean locked = updated != null && updated.bothConfirmed() && !offered.isEmpty()
+            boolean hasEscrowedItems = offered.stream().anyMatch(item -> "ESCROWED".equals(item.status()));
+            boolean allItemsReady = offered.stream().allMatch(item ->
+                    "ESCROWED".equals(item.status()) || "RETURNED".equals(item.status()));
+            boolean locked = updated != null && updated.bothConfirmed() && hasEscrowedItems && allItemsReady
                     && store.lockTradeForSettlement(updated.tradeId(), updated.revision());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
@@ -198,8 +201,12 @@ public final class TradeService implements Listener {
                     return;
                 }
                 if (!locked) {
-                    if (updated != null && updated.bothConfirmed() && offered.isEmpty()) {
-                        player.sendMessage("§eAmbos confirmaron, pero todavía no hay objetos en escrow. Ofrece al menos un objeto antes de confirmar.");
+                    if (updated != null && updated.bothConfirmed() && !hasEscrowedItems) {
+                        player.sendMessage("§eAmbos confirmaron, pero no hay objetos disponibles en escrow. Ofrece un objeto antes de confirmar.");
+                        return;
+                    }
+                    if (updated != null && updated.bothConfirmed() && !allItemsReady) {
+                        player.sendMessage("§eEspera a que terminen de procesarse las devoluciones antes de confirmar.");
                         return;
                     }
                     player.sendMessage("§aTu confirmación quedó registrada. §7Esperando a la otra persona.");
@@ -285,7 +292,11 @@ public final class TradeService implements Listener {
                     return;
                 }
                 player.openInventory(TradeMenu.create(playerId, session, items, page));
-                if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
+                if (session.status() == TradeStatus.LOCKED
+                        || items.stream().anyMatch(item -> "PREPARED".equals(item.status())
+                        || "RETURN_PENDING".equals(item.status()))) {
+                    resumeTrade(session.tradeId());
+                }
             });
         });
     }
