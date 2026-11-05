@@ -98,6 +98,10 @@ public interface PlayerDataStore {
 
     boolean markTradeEscrowed(UUID operationId);
 
+    boolean requestTradeItemReturn(UUID operationId, UUID ownerUuid, long expectedRevision);
+
+    boolean markTradeItemReturned(UUID operationId, UUID ownerUuid);
+
     boolean advanceTradeRevision(UUID tradeId, UUID actor, long expectedRevision);
 
     boolean confirmTradeRevision(UUID tradeId, UUID actor, long expectedRevision);
