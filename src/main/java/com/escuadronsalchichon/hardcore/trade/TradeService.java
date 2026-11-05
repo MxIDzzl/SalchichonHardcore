@@ -49,6 +49,12 @@ public final class TradeService implements Listener {
         this.store = store;
         this.escrowMarker = new NamespacedKey(plugin, "trade-escrow-operation");
         this.deliveryMarker = new NamespacedKey(plugin, "trade-delivery-operation");
+        Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+            List<UUID> expired = store.expireStaleTrades();
+            if (!expired.isEmpty()) {
+                Bukkit.getScheduler().runTask(plugin, () -> expired.forEach(this::resumeTrade));
+            }
+        }, 20L * 60L, 20L * 60L * 5L);
     }
 
     public void createTrade(Player a, Player b) {
@@ -361,6 +367,11 @@ public final class TradeService implements Listener {
                     player.sendMessage("§cEste intercambio requiere revisión manual; no muevas objetos marcados.");
                     return;
                 }
+                if (session.status() == TradeStatus.EXPIRED) {
+                    player.sendMessage("§eEl intercambio expiró; se están devolviendo los objetos a sus dueños.");
+                    resumeTrade(session.tradeId());
+                    return;
+                }
                 player.openInventory(TradeMenu.create(playerId, session, items, page));
                 if (session.status() == TradeStatus.LOCKED
                         || items.stream().anyMatch(item -> "PREPARED".equals(item.status())
@@ -418,10 +429,23 @@ public final class TradeService implements Listener {
             }
             UUID completionTradeId = tradeId;
             List<TradeEscrowRecord> completionItems = List.copyOf(items);
+            UUID lookupPlayer = completionItems.stream()
+                    .map(item -> "RETURNED".equals(item.status()) ? item.ownerUuid() : item.recipientUuid())
+                    .filter(id -> Bukkit.getPlayer(id) != null)
+                    .findFirst().orElse(null);
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                boolean completionResult = store.completeTrade(completionTradeId);
-                if (!completionResult) completionResult = store.completeTrade(completionTradeId);
+                TradeSessionRecord active = lookupPlayer == null ? null : store.getActiveTrade(lookupPlayer);
+                boolean expired = active != null && active.status() == TradeStatus.EXPIRED;
+                boolean completionResult = expired
+                        ? store.completeExpiredTrade(completionTradeId)
+                        : store.completeTrade(completionTradeId);
+                if (!completionResult) {
+                    completionResult = expired
+                            ? store.completeExpiredTrade(completionTradeId)
+                            : store.completeTrade(completionTradeId);
+                }
                 final boolean complete = completionResult;
+                final boolean wasExpired = expired;
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     processingTrades.remove(completionTradeId);
                     if (complete) {
@@ -434,9 +458,11 @@ public final class TradeService implements Listener {
                         for (UUID participant : participants) {
                             inventoryLocks.remove(participant);
                             Player online = Bukkit.getPlayer(participant);
-                            if (online != null) online.sendMessage("§a§l¡Intercambio completado!");
+                            if (online != null) online.sendMessage(wasExpired
+                                    ? "§eEl intercambio expiró; todos tus objetos fueron devueltos."
+                                    : "§a§l¡Intercambio completado!");
                         }
-                        plugin.getLogger().info("Intercambio completado: " + completionTradeId);
+                        plugin.getLogger().info((wasExpired ? "Intercambio expirado: " : "Intercambio completado: ") + completionTradeId);
                     }
                 });
             });
@@ -976,8 +1002,9 @@ public final class TradeService implements Listener {
                         return;
                     }
                 }
-                if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
-                else if (markerPresentAtJoin || items.stream().anyMatch(item -> item.status().equals("PREPARED")
+                if (session.status() == TradeStatus.LOCKED || session.status() == TradeStatus.EXPIRED) {
+                    resumeTrade(session.tradeId());
+                } else if (markerPresentAtJoin || items.stream().anyMatch(item -> item.status().equals("PREPARED")
                         || item.status().equals("RETURN_PENDING"))) resumeTrade(session.tradeId());
             });
         });
