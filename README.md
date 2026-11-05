@@ -88,3 +88,10 @@ El historial público de cambios, novedades y versiones del servidor se mantiene
   <b>✦ ESCUADRÓN SALCHICHÓN SMP ✦</b><br>
   <sub>Sobrevive. Coopera. Llega hasta el final.</sub>
 </p>
+
+
+## Player Value viewer
+
+The `/value [page]` command and paginated 54-slot inventory viewer are implemented as a read-only surface over the durable vault records. It shows stored item summaries and the current Player Value total. The menu cancels click/drag movement and binds interactions to the owning player; database reads run asynchronously and inventory rendering returns to the server thread.
+
+The feature remains disabled by default in `config.yml`. Deposits, withdrawals, inventory markers, and crash-safe reconciliation are intentionally not exposed yet; enabling the viewer alone would not make those operations safe.
