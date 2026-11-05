@@ -20,6 +20,10 @@ public final class VaultMenuListener implements Listener {
         if (!(event.getView().getTopInventory().getHolder() instanceof VaultMenuHolder holder)) return;
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player)) return;
+        if (!player.getUniqueId().equals(holder.playerUuid())) {
+            player.closeInventory();
+            return;
+        }
         if (event.getClickedInventory() == null || event.getClickedInventory() != event.getView().getTopInventory()) return;
 
         if (event.getRawSlot() == 45 && holder.hasPrevious()) {
@@ -31,7 +35,11 @@ public final class VaultMenuListener implements Listener {
 
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
-        if (!(event.getView().getTopInventory().getHolder() instanceof VaultMenuHolder)) return;
+        if (!(event.getView().getTopInventory().getHolder() instanceof VaultMenuHolder holder)) return;
+        if (!event.getWhoClicked().getUniqueId().equals(holder.playerUuid())) {
+            event.setCancelled(true);
+            return;
+        }
         if (event.getRawSlots().stream().anyMatch(slot -> slot < event.getView().getTopInventory().getSize())) {
             event.setCancelled(true);
         }
