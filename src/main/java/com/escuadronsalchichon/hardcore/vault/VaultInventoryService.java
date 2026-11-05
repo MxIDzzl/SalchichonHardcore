@@ -64,6 +64,18 @@ public final class VaultInventoryService implements Listener {
         return lockedPlayers.contains(playerUuid);
     }
 
+    public boolean beginExternalOperation(UUID playerUuid) {
+        return playerUuid != null && !recoveryPlayers.contains(playerUuid) && lockedPlayers.add(playerUuid);
+    }
+
+    public void endExternalOperation(UUID playerUuid) {
+        if (playerUuid != null) lockedPlayers.remove(playerUuid);
+    }
+
+    public void quarantineExternalOperation(UUID playerUuid) {
+        if (playerUuid != null) recoveryPlayers.add(playerUuid);
+    }
+
     public void deposit(Player player) {
         if (!plugin.getConfig().getBoolean("player-value.enabled", false)) {
             player.sendMessage("§cPlayer Value está desactivado.");
