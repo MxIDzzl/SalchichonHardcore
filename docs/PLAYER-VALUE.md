@@ -28,7 +28,7 @@ Example TAB `groups.yml` entry:
 
 ```yaml
 _DEFAULT_:
-  tabprefix: "&7[%d%] "
+  tabprefix: "&7[%salchichonhardcore_value_compact%] "
 ```
 
 Merge any desired prefix into the existing TAB group configuration; do not replace the server's current setup.
