@@ -180,7 +180,8 @@ public final class TradeService implements Listener {
             boolean confirmed = session != null && session.status() == TradeStatus.OPEN
                     && store.confirmTradeRevision(session.tradeId(), playerId, session.revision());
             TradeSessionRecord updated = confirmed ? store.getActiveTrade(playerId) : null;
-            boolean locked = updated != null && updated.bothConfirmed()
+            List<TradeEscrowRecord> offered = updated == null ? List.of() : store.getTradeItems(updated.tradeId());
+            boolean locked = updated != null && updated.bothConfirmed() && !offered.isEmpty()
                     && store.lockTradeForSettlement(updated.tradeId(), updated.revision());
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
@@ -189,6 +190,10 @@ public final class TradeService implements Listener {
                     return;
                 }
                 if (!locked) {
+                    if (updated != null && updated.bothConfirmed() && offered.isEmpty()) {
+                        player.sendMessage("§eAmbos confirmaron, pero todavía no hay objetos en escrow. Ofrece al menos un objeto antes de confirmar.");
+                        return;
+                    }
                     player.sendMessage("§aTu confirmación quedó registrada. §7Esperando a la otra persona.");
                     Player other = Bukkit.getPlayer(session.other(playerId));
                     if (other != null) other.sendMessage("§d" + player.getName() + " §7confirmó la oferta actual.");
@@ -196,6 +201,28 @@ public final class TradeService implements Listener {
                 }
                 player.sendMessage("§eAmbos confirmaron. El intercambio quedó bloqueado y comenzó la entrega segura.");
                 resumeTrade(updated.tradeId());
+            });
+        });
+    }
+
+    public void cancel(Player player) {
+        UUID playerId = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            List<TradeEscrowRecord> items = session == null ? List.of() : store.getTradeItems(session.tradeId());
+            boolean cancelled = session != null && session.status() == TradeStatus.OPEN
+                    && items.isEmpty() && store.cancelEmptyTrade(session.tradeId(), playerId);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (!cancelled) {
+                    player.sendMessage("§cSolo puedes cancelar un intercambio abierto que todavía no tenga objetos ofrecidos.");
+                    return;
+                }
+                inventoryLocks.remove(session.playerA());
+                inventoryLocks.remove(session.playerB());
+                player.sendMessage("§7Intercambio cancelado.");
+                Player other = Bukkit.getPlayer(session.other(playerId));
+                if (other != null) other.sendMessage("§7El intercambio fue cancelado.");
             });
         });
     }
@@ -212,11 +239,13 @@ public final class TradeService implements Listener {
                     return;
                 }
                 if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
-                    inventoryLocks.add(playerId);
+                    inventoryLocks.add(session.playerA());
+                    inventoryLocks.add(session.playerB());
                     player.sendMessage("§cEste intercambio requiere revisión manual; no muevas objetos marcados.");
                     return;
                 }
                 player.openInventory(TradeMenu.create(playerId, session, items, page));
+                if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
             });
         });
     }
