@@ -1651,11 +1651,16 @@ public class DatabaseManager implements PlayerDataStore {
                        confirmed_revision_a,confirmed_revision_b
                 FROM trade_sessions
                 WHERE (player_a=? OR player_b=?)
-                  AND status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                  AND (status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                     OR (status='EXPIRED' AND EXISTS (
+                         SELECT 1 FROM trade_player_locks l
+                         WHERE l.trade_id=trade_sessions.trade_id AND l.player_uuid=?
+                     )))
                 ORDER BY created_at DESC LIMIT 1
                 """)) {
             statement.setString(1, playerUuid.toString());
             statement.setString(2, playerUuid.toString());
+            statement.setString(3, playerUuid.toString());
             try (var result = statement.executeQuery()) {
                 if (!result.next()) return null;
                 long revision = result.getLong("revision");
@@ -2085,6 +2090,84 @@ public class DatabaseManager implements PlayerDataStore {
             return false;
         } finally {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+
+    @Override
+    public synchronized java.util.List<UUID> expireStaleTrades() {
+        if (!isConnected()) return java.util.List.of();
+        java.util.List<UUID> expired = new java.util.ArrayList<>();
+        try {
+            connection.setAutoCommit(false);
+            try (var query = connection.prepareStatement("""
+                    SELECT t.trade_id FROM trade_sessions t
+                    WHERE t.status='OPEN' AND t.updated_at < datetime('now','-24 hours')
+                      AND NOT EXISTS (
+                          SELECT 1 FROM trade_item_operations o
+                          WHERE o.trade_id=t.trade_id
+                            AND o.status NOT IN ('ESCROWED','RETURNED')
+                      )
+                    """);
+                 var result = query.executeQuery()) {
+                while (result.next()) expired.add(UUID.fromString(result.getString(1)));
+            }
+            try (var update = connection.prepareStatement("""
+                    UPDATE trade_sessions SET status='EXPIRED',revision=revision+1,
+                        confirmed_revision_a=NULL,confirmed_revision_b=NULL,updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='OPEN'
+                    """);
+                 var returns = connection.prepareStatement("""
+                    UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='ESCROWED'
+                    """);
+                 var release = connection.prepareStatement("""
+                    DELETE FROM trade_player_locks
+                    WHERE trade_id=? AND NOT EXISTS (
+                        SELECT 1 FROM trade_item_operations o
+                        WHERE o.trade_id=? AND o.status<>'RETURNED'
+                    )
+                    """)) {
+                for (UUID tradeId : expired) {
+                    update.setString(1, tradeId.toString());
+                    if (update.executeUpdate() != 1) continue;
+                    returns.setString(1, tradeId.toString());
+                    returns.executeUpdate();
+                    release.setString(1, tradeId.toString());
+                    release.setString(2, tradeId.toString());
+                    release.executeUpdate();
+                }
+            }
+            connection.commit();
+            return java.util.List.copyOf(expired);
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().severe("No se pudieron expirar intercambios inactivos.");
+            return java.util.List.of();
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public synchronized boolean completeExpiredTrade(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try (var release = connection.prepareStatement("""
+                DELETE FROM trade_player_locks
+                WHERE trade_id=? AND EXISTS (
+                    SELECT 1 FROM trade_sessions WHERE trade_id=? AND status='EXPIRED'
+                ) AND NOT EXISTS (
+                    SELECT 1 FROM trade_item_operations o
+                    WHERE o.trade_id=? AND o.status<>'RETURNED'
+                )
+                """)) {
+            release.setString(1, tradeId.toString());
+            release.setString(2, tradeId.toString());
+            release.setString(3, tradeId.toString());
+            return release.executeUpdate() > 0;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo finalizar la expiración del intercambio.");
+            return false;
         }
     }
 
