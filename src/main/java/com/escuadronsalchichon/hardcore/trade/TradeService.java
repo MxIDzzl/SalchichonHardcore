@@ -8,6 +8,9 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.ItemDespawnEvent;
+import org.bukkit.entity.Item;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -1015,6 +1018,19 @@ public final class TradeService implements Listener {
         if (event.getEntity() instanceof Player player && inventoryLocks.contains(player.getUniqueId())) {
             event.setCancelled(true);
         }
+    }
+
+    @EventHandler
+    public void onMarkedItemDespawn(ItemDespawnEvent event) {
+        ItemStack stack = event.getEntity().getItemStack();
+        if (hasMarker(stack, escrowMarker) || hasMarker(stack, deliveryMarker)) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onMarkedItemDamage(EntityDamageEvent event) {
+        if (!(event.getEntity() instanceof Item item)) return;
+        ItemStack stack = item.getItemStack();
+        if (hasMarker(stack, escrowMarker) || hasMarker(stack, deliveryMarker)) event.setCancelled(true);
     }
 
     @EventHandler
