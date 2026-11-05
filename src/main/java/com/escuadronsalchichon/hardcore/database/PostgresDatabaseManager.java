@@ -828,6 +828,31 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
 
+
+    @Override
+    public VaultRecoverySummary getVaultRecoverySummary() {
+        if (!isConnected()) return null;
+        String sql = """
+                SELECT
+                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status='PREPARED'),
+                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='DELIVERY_PENDING'),
+                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED'),
+                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED')
+                FROM vault_operations
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            if (!result.next()) return null;
+            return new VaultRecoverySummary(result.getInt(1), result.getInt(2),
+                    result.getInt(3), result.getInt(4));
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar el estado de recuperación de Player Value.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
     @Override
     public int flagUncertainVaultOperations() {
         if (!isConnected()) return -1;
