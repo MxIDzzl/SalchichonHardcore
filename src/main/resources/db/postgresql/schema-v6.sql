@@ -8,10 +8,6 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_sessions_active_player_b
     ON trade_sessions (player_b)
     WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED');
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_trade_sessions_active_player_a_b
-    ON trade_sessions (player_b)
-    WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED');
-
 CREATE TABLE IF NOT EXISTS trade_item_operations (
     operation_id UUID PRIMARY KEY,
     trade_id UUID NOT NULL REFERENCES trade_sessions(trade_id) ON DELETE RESTRICT,
@@ -47,3 +43,18 @@ CREATE TABLE IF NOT EXISTS trade_player_locks (
 
 CREATE INDEX IF NOT EXISTS idx_trade_player_locks_trade
     ON trade_player_locks (trade_id);
+
+-- Backfill active sessions into the role-independent lock table. Duplicate
+-- participants across active sessions intentionally fail the migration.
+INSERT INTO trade_player_locks (player_uuid, trade_id)
+SELECT player_uuid, trade_id
+FROM (
+    SELECT player_a AS player_uuid, trade_id
+    FROM trade_sessions
+    WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+    UNION ALL
+    SELECT player_b AS player_uuid, trade_id
+    FROM trade_sessions
+    WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+) active_participants
+ON CONFLICT (player_uuid) DO NOTHING;
