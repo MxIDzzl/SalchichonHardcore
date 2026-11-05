@@ -90,45 +90,31 @@ A feature is releasable only after:
 7. Documented rollback and operator runbook.
 8. CI green on the exact release commit.
 
-## 9. Current state (2026-11-04)
+## 9. Current state (2026-11-05)
 
-Implemented in separate draft pull requests (all remain isolated from `main`):
+The authoritative product scope is documented in [PRODUCT-SCOPE.md](PRODUCT-SCOPE.md). Important scope corrections:
+- Player Value is the personal item vault/rarity-weighted prestige score. The current UI is a read-only viewer with main-hand deposits and withdrawals; the requested deposit chest interface remains to be completed.
+- Trades are handled by the external trade plugin already installed on the server. SalchichonHardcore no longer registers its own /trade runtime command. Legacy trade implementation/schema files remain in the feature branch and are not part of the release scope.
+- zMClans remains the authoritative clan system. The website/API still need a safe synchronization/read model for clan membership and clan pages.
+- SkinRestorer integration is implemented as an optional plugin bridge (API major 15) that stores the texture hash on player join. Website rendering and end-to-end verification remain.
+- Advanced mob levels and special enemy variants are explicitly deferred to a later phase. Do not block the current portal/plugin scope on them.
 
-### Paper plugin — `MxIDzzl/SalchichonHardcore`
-- Versioned PostgreSQL schema v1-v4, HikariCP adapter, SQLite adapter/default, transactional legacy importer, and migration runbook.
-- Official deaths/stat events, playtime tracking, audited administrative corrections, `/hardcore check`, and PlaceholderAPI statistics.
-- Player Value persistence foundation: strict allow-list policy, prepared deposit journal, transactional commit with BIGINT overflow protection, withdrawal claims, atomic cooldown persistence, pending/recovery separation, and startup quarantine of ambiguous operations.
-- PostgreSQL withdrawals lock the player's durable `player_data` row before checking cooldown, closing the first-withdrawal race when no cooldown row exists.
-- CI uses Java 25 and the repository's pinned Paper API.
+### Paper plugin
+- Daily Hardcore lifecycle, official death tracking, playtime, totems, PlaceholderAPI, SQLite default, PostgreSQL adapter/migrations/importer.
+- Player Value persistence, inventory viewer, main-hand deposit, withdrawal claims, PDC markers and conservative recovery are implemented foundations.
+- Internal trade command registration has been removed; use the server's external trade plugin.
+- SkinRestorer texture-hash synchronization is implemented as an optional integration.
+- Remaining release gates: complete chest-style deposit GUI, crash-injection tests for deposits/withdrawals, SQLite/PostgreSQL parity and staging tests, exact Paper compatibility, backup/restore rehearsal.
 
-### Independent API and web — `MxIDzzl/SalchichonSMP-Updates`
-- Spring Boot API service in `api/`, with read-only public overview/player/profile/ranking/announcement endpoints, bounded pagination, CORS allow-list, health/readiness, Dockerfile, and Flyway announcement schema.
-- Runtime Hikari connections are read-only; migration credentials are separate and Flyway is disabled by default.
-- BIGINT Player Value is serialized as a decimal string; sort expressions are allow-listed and covered by tests.
-- Next.js public portal with season overview, live API statistics, player directory/profiles, rankings, announcement section, responsive styling, and explicit unavailable states rather than fabricated data.
-- Web and API have independent CI workflows and can be built/deployed as separate processes. Their draft PRs have passed CI on their current branch heads as of this update.
+### API and web
+- Independent Spring Boot API and Next.js portal remain separate deployable services.
+- Public overview, player directory/profiles, rankings, announcements and scheduled next update are implemented.
+- The web project has responsive styling and profile routes. Clan information/pages and full SkinRestorer skin rendering still need end-to-end integration.
+- Admin API is disabled by default; secure human authentication and the functional admin panel remain pending.
+- The website must be visually polished, not reduced to a plain statistics page.
 
-Still not implemented/release-ready:
-- Bukkit inventory adapter, PDC item markers/fingerprints, deposit/withdrawal GUI, and inventory-aware crash reconciliation for Player Value.
-- `/trade` GUI, item escrow lifecycle, bilateral revision-bound confirmation, and crash-safe delivery.
-- Admin authentication/authorization, MFA/session hardening, audit-backed mutation endpoints, and functional admin panel.
-- SkinRestorer integration and published skin/profile visuals.
-- Plugin license/instance enrollment, revocation, and authenticated API ingestion.
-- End-to-end PostgreSQL migration rehearsal, staging integration/crash tests, deployment, and rollback rehearsal.
-
-The public web/API foundations are code, not production deployments. Keep PostgreSQL and Player Value disabled in the live server, retain SQLite backups, and do not merge draft PRs to `main` until their feature-specific release gates pass.
-
-
-### Player Value deposit journal update — 2026-11-03
-
-- SQLite and PostgreSQL now expose a two-phase deposit persistence contract (`PREPARED` then transactional `COMMITTED`).
-- Startup quarantines abandoned `DEPOSIT/PREPARED` operations as `RECOVERY_REQUIRED`, preventing blind replay or cancellation.
-- An unverified cancellation API was intentionally removed; no code may cancel an operation until inventory evidence is available.
-- Still outstanding: Bukkit inventory adapter, PDC marker/fingerprint, cooldown in the same transaction, inventory-aware recovery/reconciliation, and crash-boundary integration tests. Player Value remains disabled.
-
-
-- 2026-11-04: la confirmación de depósitos ahora rechaza desbordamientos del agregado Player Value `BIGINT` en SQLite y PostgreSQL; la transacción completa se revierte si no puede actualizar exactamente una fila.
-
-### Retiro de bóveda: aislamiento de reclamaciones inciertas — 2026-11-04
-
-Las reclamaciones `RECOVERY_REQUIRED` ya no aparecen en `getPendingVaultClaims`, por lo que no pueden confundirse con trabajo seguro de entrega automática. La transición a `DELIVERING` exige además que la operación asociada pertenezca al mismo jugador y permanezca en `DELIVERY_PENDING`, validado en la propia sentencia SQL en ambos motores. La finalización sigue siendo transaccional. Esto reduce inconsistencias de estado, pero no ofrece entrega exactly-once de inventario: Player Value permanece desactivado hasta implementar marcadores PDC y reconciliación.
+### Production safety
+- Keep PostgreSQL disabled in the live server until migration and restore drills pass.
+- Keep Player Value disabled until chest UI, crash tests and staging pass.
+- Preserve SQLite and verified backups.
+- Do not merge draft PRs to main without explicit release approval and all relevant gates passing.
