@@ -158,3 +158,21 @@ The plugin now has a first inventory-backed deposit path and a read-only paginat
 Both database adapters now support listing uncertain deposits, committing PREPARED or RECOVERY_REQUIRED deposits idempotently, and cancelling a deposit only when recovery finds its marker still present. The terminal state uses the schema-supported `CANCELLED` value.
 
 **Still not release-ready:** withdrawals do not yet have the PDC-backed delivery/reconciliation adapter; no full crash-injection integration suite has been run against live SQLite and PostgreSQL; and the feature remains `enabled: false` by default. Do not enable it on the live server based only on unit/build CI.
+
+
+### Recovery evidence refinement — 2026-11-05
+
+The deposit adapter now distinguishes the two inventory boundaries using existing schema states:
+
+1. `PREPARED`: the PDC marker was saved and the durable journal exists, but durable removal has not yet been acknowledged.
+2. `DELIVERY_PENDING` for a DEPOSIT: the marked stack was removed from the player's inventory, `Player.saveData()` returned, and the database recorded that removal before crediting.
+3. `COMMITTED`: the vault row, aggregate score, and terminal operation state were committed together.
+
+Automatic recovery is deliberately asymmetric:
+- Marker present + `PREPARED`/`RECOVERY_REQUIRED`: cancel the journal and strip the marker, retaining the item.
+- Marker absent + `DELIVERY_PENDING`: commit the deposit idempotently.
+- Marker absent + `PREPARED`/`RECOVERY_REQUIRED`, or marker present + `DELIVERY_PENDING`: do not guess. Keep Player Value operations blocked and require manual review.
+
+Startup quarantine changes interrupted `DEPOSIT/PREPARED` to `RECOVERY_REQUIRED`, but preserves `DEPOSIT/DELIVERY_PENDING` as durable evidence that the inventory removal was saved. The recovery query includes all three nonterminal states. The transaction that credits Player Value now accepts only `DELIVERY_PENDING`; it cannot credit a PREPARED row merely because its marker is missing.
+
+This closes the dangerous window where a crash after inventory removal but before durable removal acknowledgement could otherwise be mistaken for a completed removal. That narrow window now fails closed for manual review instead of automatically crediting or cancelling.
