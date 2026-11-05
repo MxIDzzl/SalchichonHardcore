@@ -178,6 +178,7 @@ public final class PostgresSchemaManager {
                 "trade_sessions",
                 "trade_escrow_items",
                 "trade_item_operations",
+                "trade_player_locks",
                 "operation_receipts",
                 "vault_operations",
                 "vault_claims",
