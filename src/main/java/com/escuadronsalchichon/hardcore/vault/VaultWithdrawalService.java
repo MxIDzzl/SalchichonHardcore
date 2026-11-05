@@ -99,7 +99,7 @@ public final class VaultWithdrawalService implements Listener {
                 }
                 if (claims.isEmpty()) {
                     if (hasAnyClaimMarker(player)) {
-                        inventoryLocks.quarantineExternalOperation(uuid);
+                        inventoryLocks.lockExternalOperation(uuid);
                         player.sendMessage("Hay un marcador de retiro sin una reclamación verificable. Requiere revisión manual.");
                         return;
                     }
@@ -121,7 +121,7 @@ public final class VaultWithdrawalService implements Listener {
         if (!player.isOnline()) return;
         if (index >= claims.size()) {
             if (hasAnyClaimMarker(player)) {
-                inventoryLocks.quarantineExternalOperation(uuid);
+                inventoryLocks.lockExternalOperation(uuid);
                 player.sendMessage("Quedó un marcador de retiro sin reclamación activa. El almacén requiere revisión manual.");
                 return;
             }
@@ -142,7 +142,8 @@ public final class VaultWithdrawalService implements Listener {
             return;
         }
         if (action == VaultClaimRecord.RecoveryAction.MANUAL_REVIEW) {
-            inventoryLocks.quarantineExternalOperation(uuid);
+            if (marked > 0) inventoryLocks.lockExternalOperation(uuid);
+            else inventoryLocks.quarantineExternalOperation(uuid);
             if (marked > 0) player.sendMessage("§cEl objeto de un retiro interrumpido está incompleto o tiene un estado contradictorio. No lo muevas; requiere revisión manual.");
             else player.sendMessage("§cUn retiro interrumpido no tiene evidencia de entrega. No se volverá a generar automáticamente.");
             plugin.getLogger().warning("Retiro requiere revisión manual: " + claim.claimId() + " (" + claim.status() + ").");
@@ -153,7 +154,7 @@ public final class VaultWithdrawalService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (!acknowledged) {
-                    inventoryLocks.quarantineExternalOperation(uuid);
+                    inventoryLocks.lockExternalOperation(uuid);
                     player.sendMessage("§cNo se pudo confirmar el retiro recuperado. El objeto permanece protegido.");
                     return;
                 }
@@ -187,14 +188,14 @@ public final class VaultWithdrawalService implements Listener {
                 }
                 Map<Integer, ItemStack> leftovers = player.getInventory().addItem(item);
                 if (!leftovers.isEmpty()) {
-                    inventoryLocks.quarantineExternalOperation(uuid);
+                    inventoryLocks.lockExternalOperation(uuid);
                     player.sendMessage("§cLa entrega quedó incompleta y aislada para revisión. No intentes repetirla.");
                     return;
                 }
                 try {
                     player.saveData();
                 } catch (RuntimeException failure) {
-                    inventoryLocks.quarantineExternalOperation(uuid);
+                    inventoryLocks.lockExternalOperation(uuid);
                     player.sendMessage("§cNo se pudo guardar el inventario. El retiro quedó aislado para recuperación.");
                     return;
                 }
@@ -203,7 +204,7 @@ public final class VaultWithdrawalService implements Listener {
                     Bukkit.getScheduler().runTask(plugin, () -> {
                         if (!player.isOnline()) return;
                         if (!acknowledged) {
-                            inventoryLocks.quarantineExternalOperation(uuid);
+                            inventoryLocks.lockExternalOperation(uuid);
                             player.sendMessage("§eEl objeto está marcado en tu inventario, pero falta confirmar el retiro. No lo muevas.");
                             return;
                         }
