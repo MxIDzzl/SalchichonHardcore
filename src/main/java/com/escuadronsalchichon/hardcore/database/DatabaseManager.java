@@ -1929,7 +1929,7 @@ public class DatabaseManager implements PlayerDataStore {
                     WHERE trade_id=? AND status='OPEN' AND revision=?
                       AND confirmed_revision_a=revision AND confirmed_revision_b=revision
                       AND EXISTS (SELECT 1 FROM trade_item_operations o
-                                  WHERE o.trade_id=trade_sessions.trade_id)
+                                  WHERE o.trade_id=trade_sessions.trade_id AND o.status='ESCROWED')
                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
                                       WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('ESCROWED','RETURNED'))
                     """)) {
