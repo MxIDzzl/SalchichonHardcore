@@ -36,7 +36,7 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
             return true;
         }
         if (args.length == 0) {
-            sendHelp(player);
+            trades.openMenu(player, 0);
             return true;
         }
 
@@ -54,7 +54,7 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
             }
             case "status" -> {
                 if (args.length != 1) player.sendMessage("§cUso: /trade status");
-                else trades.status(player);
+                else trades.openMenu(player, 0);
             }
             default -> invite(player, args[0]);
         }
