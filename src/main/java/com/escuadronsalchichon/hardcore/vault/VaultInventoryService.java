@@ -201,7 +201,13 @@ public final class VaultInventoryService implements Listener {
         UUID uuid = player.getUniqueId();
         if (!player.isOnline()) return;
         if (index >= pending.size()) {
-            clearOrphanMarkers(player);
+            if (hasAnyMarker(player)) {
+                lockedPlayers.add(uuid);
+                recoveryPlayers.add(uuid);
+                player.sendMessage("§cHay un marcador de depósito sin una operación verificable. El almacén queda bloqueado para revisión manual.");
+                plugin.getLogger().warning("Marcador de depósito huérfano para " + player.getName() + "; no se retirará ni se limpiará automáticamente.");
+                return;
+            }
             player.saveData();
             lockedPlayers.remove(uuid);
             recoveryPlayers.remove(uuid);
