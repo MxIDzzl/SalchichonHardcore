@@ -1797,6 +1797,70 @@ public class DatabaseManager implements PlayerDataStore {
         }
     }
 
+
+    @Override
+    public synchronized boolean requestTradeItemReturn(UUID operationId, UUID ownerUuid, long expectedRevision) {
+        if (!isConnected() || operationId == null || ownerUuid == null || expectedRevision < 0) return false;
+        try {
+            connection.setAutoCommit(false);
+            String tradeId;
+            try (var find = connection.prepareStatement("""
+                    SELECT trade_id FROM trade_item_operations
+                    WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'
+                    """)) {
+                find.setString(1, operationId.toString());
+                find.setString(2, ownerUuid.toString());
+                try (var result = find.executeQuery()) {
+                    if (!result.next()) { connection.rollback(); return false; }
+                    tradeId = result.getString(1);
+                }
+            }
+            try (var updateSession = connection.prepareStatement("""
+                    UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
+                        confirmed_revision_b=NULL,updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='OPEN' AND revision=?
+                      AND (player_a=? OR player_b=?)
+                    """)) {
+                updateSession.setString(1, tradeId);
+                updateSession.setLong(2, expectedRevision);
+                updateSession.setString(3, ownerUuid.toString());
+                updateSession.setString(4, ownerUuid.toString());
+                if (updateSession.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (var updateItem = connection.prepareStatement("""
+                    UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=CURRENT_TIMESTAMP
+                    WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'
+                    """)) {
+                updateItem.setString(1, operationId.toString());
+                updateItem.setString(2, ownerUuid.toString());
+                if (updateItem.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public synchronized boolean markTradeItemReturned(UUID operationId, UUID ownerUuid) {
+        if (!isConnected() || operationId == null || ownerUuid == null) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_item_operations SET status='RETURNED',updated_at=CURRENT_TIMESTAMP
+                WHERE operation_id=? AND owner_uuid=? AND status IN ('RETURN_PENDING','RETURNED')
+                """)) {
+            statement.setString(1, operationId.toString());
+            statement.setString(2, ownerUuid.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la devolución del objeto.");
+            return false;
+        }
+    }
+
     @Override
     public synchronized boolean markTradeEscrowed(UUID operationId) {
         if (!isConnected() || operationId == null) return false;
@@ -1939,7 +2003,7 @@ public class DatabaseManager implements PlayerDataStore {
             }
             try (var updateItems = connection.prepareStatement("""
                     UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP
-                    WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING')
+                    WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','RETURN_PENDING','DELIVERY_PENDING','DELIVERING')
                     """)) {
                 updateItems.setString(1, tradeId.toString());
                 updateItems.executeUpdate();
@@ -1993,7 +2057,7 @@ public class DatabaseManager implements PlayerDataStore {
                     UPDATE trade_sessions SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP
                     WHERE trade_id=? AND status='OPEN' AND (player_a=? OR player_b=?)
                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                      WHERE o.trade_id=trade_sessions.trade_id)
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'RETURNED')
                     """)) {
                 update.setString(1, tradeId.toString());
                 update.setString(2, actor.toString());
