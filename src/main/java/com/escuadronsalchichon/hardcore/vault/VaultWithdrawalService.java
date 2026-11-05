@@ -120,10 +120,14 @@ public final class VaultWithdrawalService implements Listener {
         UUID uuid = player.getUniqueId();
         if (!player.isOnline()) return;
         if (index >= claims.size()) {
-            clearOrphanMarkers(player);
+            if (hasAnyClaimMarker(player)) {
+                inventoryLocks.quarantineExternalOperation(uuid);
+                player.sendMessage("Quedó un marcador de retiro sin reclamación activa. El almacén requiere revisión manual.");
+                return;
+            }
             player.saveData();
             inventoryLocks.endExternalOperation(uuid);
-            if (!claims.isEmpty()) player.sendMessage("§aSe revisaron " + claims.size() + " retiro(s) pendientes.");
+            if (!claims.isEmpty()) player.sendMessage("Se revisaron " + claims.size() + " retiro(s) pendientes.");
             return;
         }
         VaultClaimRecord claim = claims.get(index);
@@ -262,6 +266,16 @@ public final class VaultWithdrawalService implements Listener {
             total = Math.addExact(total, item.getAmount());
         }
         return total == claim.amount();
+    }
+
+    private boolean hasAnyClaimMarker(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.hasItemMeta()
+                    && item.getItemMeta().getPersistentDataContainer().has(claimMarker, PersistentDataType.STRING)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private int markedAmount(Player player, UUID claimId) {
