@@ -1588,7 +1588,17 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
             connection.setObject(1, tradeId);
             connection.setObject(2, tradeId);
             connection.setObject(3, tradeId);
-            return release.executeUpdate() > 0;
+            if (release.executeUpdate() > 0) return true;
+            try (PreparedStatement verify = connection.prepareStatement("""
+                    SELECT 1 FROM trade_sessions t
+                    WHERE t.trade_id=? AND t.status='EXPIRED'
+                      AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=t.trade_id AND o.status<>'RETURNED')
+                      AND NOT EXISTS (SELECT 1 FROM trade_player_locks l WHERE l.trade_id=t.trade_id)
+                    """)) {
+                verify.setObject(1, tradeId);
+                try (ResultSet result = verify.executeQuery()) { return result.next(); }
+            }
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo finalizar la expiración del intercambio.");
             return false;
