@@ -108,6 +108,17 @@ public final class TradeService implements Listener {
                 });
                 return;
             }
+            List<TradeEscrowRecord> existingItems = store.getTradeItems(session.tradeId());
+            boolean unresolved = existingItems.stream().anyMatch(item ->
+                    "PREPARED".equals(item.status()) || "RETURN_PENDING".equals(item.status())
+                            || "RECOVERY_REQUIRED".equals(item.status()));
+            if (unresolved || processingTrades.contains(session.tradeId())) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    inventoryLocks.remove(playerId);
+                    player.sendMessage("§eEspera a que termine la recuperación de la oferta actual antes de añadir otro objeto.");
+                });
+                return;
+            }
             UUID operationId = UUID.randomUUID();
             UUID recipient = session.other(playerId);
             TradeEscrowItem record = new TradeEscrowItem(operationId, session.tradeId(),
@@ -227,6 +238,7 @@ public final class TradeService implements Listener {
             List<TradeEscrowRecord> items = session == null ? List.of() : store.getTradeItems(session.tradeId());
             boolean allReturned = items.stream().allMatch(item -> "RETURNED".equals(item.status()));
             boolean cancelled = session != null && session.status() == TradeStatus.OPEN
+                    && !processingTrades.contains(session.tradeId())
                     && allReturned && store.cancelEmptyTrade(session.tradeId(), playerId);
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
@@ -256,6 +268,7 @@ public final class TradeService implements Listener {
             TradeEscrowRecord selected = items.stream()
                     .filter(item -> item.operationId().equals(operationId)).findFirst().orElse(null);
             boolean requested = session != null && session.status() == TradeStatus.OPEN
+                    && !processingTrades.contains(session.tradeId())
                     && session.revision() == expectedRevision && selected != null
                     && selected.ownerUuid().equals(playerId) && "ESCROWED".equals(selected.status())
                     && store.requestTradeItemReturn(operationId, playerId, expectedRevision);
