@@ -28,6 +28,23 @@ public final class SkinRestorerSkinSync implements Listener {
         this.skinsRestorer = skinsRestorer;
     }
 
+
+    public static void registerIfAvailable(JavaPlugin plugin, PlayerDataStore store) {
+        try {
+            if (!net.skinsrestorer.api.VersionProvider.isCompatibleWith("15")) {
+                plugin.getLogger().warning("La versión de SkinsRestorer no es compatible; sincronización de skins desactivada.");
+                return;
+            }
+            var api = net.skinsrestorer.api.SkinsRestorerProvider.get();
+            plugin.getServer().getPluginManager().registerEvents(
+                    new SkinRestorerSkinSync(plugin, store, api), plugin
+            );
+            plugin.getLogger().info("Integración con SkinsRestorer API major 15 activada.");
+        } catch (IllegalStateException exception) {
+            plugin.getLogger().warning("La API de SkinsRestorer no está disponible; sincronización de skins desactivada.");
+        }
+    }
+
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         UUID playerUuid = event.getPlayer().getUniqueId();
