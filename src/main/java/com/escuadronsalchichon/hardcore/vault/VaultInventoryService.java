@@ -21,7 +21,6 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -115,10 +114,7 @@ public final class VaultInventoryService implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             boolean prepared = store.prepareVaultDeposit(playerUuid, player.getName(), record);
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
-                    lockedPlayers.remove(playerUuid);
-                    return;
-                }
+                if (!player.isOnline()) return;
                 if (!prepared) {
                     restoreMarkedItem(player, operationId, original);
                     lockedPlayers.remove(playerUuid);
@@ -164,10 +160,7 @@ public final class VaultInventoryService implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             List<VaultItemRecord> pending = store.getUncertainVaultDeposits(uuid);
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
-                    lockedPlayers.remove(uuid);
-                    return;
-                }
+                if (!player.isOnline()) return;
                 if (pending == null) {
                     player.sendMessage("§cNo se pudo revisar una operación Player Value. Tu inventario queda protegido hasta poder verificarla.");
                     plugin.getLogger().warning("No se pudo recuperar la bóveda de " + player.getName() + "; se mantiene bloqueado el inventario.");
@@ -180,10 +173,7 @@ public final class VaultInventoryService implements Listener {
 
     private void recoverNext(Player player, List<VaultItemRecord> pending, int index) {
         UUID uuid = player.getUniqueId();
-        if (!player.isOnline()) {
-            lockedPlayers.remove(uuid);
-            return;
-        }
+        if (!player.isOnline()) return;
         if (index >= pending.size()) {
             clearOrphanMarkers(player);
             player.saveData();
@@ -243,18 +233,13 @@ public final class VaultInventoryService implements Listener {
     }
 
     private void clearOrphanMarkers(Player player) {
-        Set<String> known = new java.util.HashSet<>();
-        for (VaultItemRecord item : store.getUncertainVaultDeposits(player.getUniqueId())) {
-            if (item != null) known.add(item.itemId().toString());
-        }
         ItemStack[] contents = player.getInventory().getContents();
         boolean changed = false;
         for (int i = 0; i < contents.length; i++) {
             ItemStack item = contents[i];
             if (item == null || !item.hasItemMeta()) continue;
             ItemMeta meta = item.getItemMeta();
-            String marker = meta.getPersistentDataContainer().get(depositMarker, PersistentDataType.STRING);
-            if (marker == null || known.contains(marker)) continue;
+            if (!meta.getPersistentDataContainer().has(depositMarker, PersistentDataType.STRING)) continue;
             meta.getPersistentDataContainer().remove(depositMarker);
             item.setItemMeta(meta);
             contents[i] = item;
@@ -262,6 +247,7 @@ public final class VaultInventoryService implements Listener {
         }
         if (changed) player.getInventory().setContents(contents);
     }
+
 
     private boolean writeMarker(ItemStack item, UUID operationId) {
         try {
@@ -281,6 +267,11 @@ public final class VaultInventoryService implements Listener {
         removeMarkedItem(player, operationId);
         player.getInventory().setItemInMainHand(original);
         player.saveData();
+    }
+
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        lockedPlayers.remove(event.getPlayer().getUniqueId());
     }
 
     @EventHandler
