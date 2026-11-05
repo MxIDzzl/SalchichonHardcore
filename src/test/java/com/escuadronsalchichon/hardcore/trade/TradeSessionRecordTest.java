@@ -44,5 +44,7 @@ class TradeSessionRecordTest {
                 UUID.randomUUID(), player, player, TradeStatus.OPEN, 0, null, null));
         assertThrows(IllegalArgumentException.class, () -> new TradeSessionRecord(
                 UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), TradeStatus.OPEN, -1, null, null));
+        assertThrows(IllegalArgumentException.class, () -> new TradeSessionRecord(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), TradeStatus.OPEN, 2, 3L, null));
     }
 }
