@@ -6,6 +6,9 @@ import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.entity.Player;
 
 import java.util.ArrayList;
@@ -15,7 +18,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class TradeCommand implements CommandExecutor, TabCompleter {
+public final class TradeCommand implements CommandExecutor, TabCompleter, Listener {
     private final SalchichonHardcore plugin;
     private final TradeService trades;
     private final Map<UUID, UUID> invitations = new ConcurrentHashMap<>();
@@ -109,6 +112,13 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
         Player inviter = Bukkit.getPlayer(inviterId);
         target.sendMessage("§7Invitación rechazada.");
         if (inviter != null) inviter.sendMessage("§c" + target.getName() + " rechazó tu invitación.");
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        UUID leaving = event.getPlayer().getUniqueId();
+        invitations.remove(leaving);
+        invitations.entrySet().removeIf(entry -> entry.getValue().equals(leaving));
     }
 
     private void sendHelp(Player player) {
