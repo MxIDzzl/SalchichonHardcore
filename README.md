@@ -100,3 +100,8 @@ The feature remains disabled by default in `config.yml`. Withdrawals now use a d
 ## Intercambios de objetos
 
 Los intercambios se gestionan mediante el plugin externo ya instalado en el servidor. SalchichonHardcore no registra ni administra un sistema propio de trades. Player Value es un sistema de prestigio no transferible y no forma parte de los intercambios.
+
+
+## Alcance actual del ecosistema
+
+Consulta [docs/PRODUCT-SCOPE.md](docs/PRODUCT-SCOPE.md) para el alcance correcto, integraciones externas (zMClans, SkinRestorer y trades) y funcionalidades que se dejan para fases posteriores.
