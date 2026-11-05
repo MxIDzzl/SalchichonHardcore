@@ -12,7 +12,7 @@ softdepend:
 commands:
   value:
     description: Abre tu almacén personal Player Value
-    usage: /value [página]
+    usage: /value [página] | /value deposit
   hardcore:
     description: Comandos administrativos de SalchichonHardcore
     usage: /hardcore <check|restore|reset|stat|vault-status|reload|migrate-sqlite>
