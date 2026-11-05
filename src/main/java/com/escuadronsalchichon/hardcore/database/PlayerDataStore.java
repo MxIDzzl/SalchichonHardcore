@@ -81,6 +81,9 @@ public interface PlayerDataStore {
 
     java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid);
 
+    /** Returns every nonterminal withdrawal claim for evidence-based recovery. */
+    java.util.List<VaultClaimRecord> getUncertainVaultClaims(UUID playerUuid);
+
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
     VaultRecoverySummary getVaultRecoverySummary();
