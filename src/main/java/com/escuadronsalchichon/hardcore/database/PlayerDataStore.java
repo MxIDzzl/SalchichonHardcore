@@ -2,6 +2,8 @@ package com.escuadronsalchichon.hardcore.database;
 
 import com.escuadronsalchichon.hardcore.player.PlayerData;
 import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
+import com.escuadronsalchichon.hardcore.trade.TradeSessionRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord;
 
 import java.time.LocalDate;
 import java.util.UUID;
@@ -87,6 +89,10 @@ public interface PlayerDataStore {
 
     // Item-only trade escrow. All methods are durable and idempotent where noted.
     boolean createTradeSession(UUID tradeId, UUID playerA, UUID playerB);
+
+    TradeSessionRecord getActiveTrade(UUID playerUuid);
+
+    java.util.List<TradeEscrowRecord> getTradeItems(UUID tradeId);
 
     boolean prepareTradeEscrowItem(TradeEscrowItem item);
 
