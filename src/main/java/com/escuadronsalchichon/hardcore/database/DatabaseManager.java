@@ -1802,7 +1802,7 @@ public class DatabaseManager implements PlayerDataStore {
         if (!isConnected() || operationId == null) return false;
         try (var statement = connection.prepareStatement("""
                 UPDATE trade_item_operations SET status='ESCROWED',updated_at=CURRENT_TIMESTAMP
-                WHERE operation_id=? AND status='PREPARED'
+                WHERE operation_id=? AND status IN ('PREPARED','ESCROWED')
                 """)) {
             statement.setString(1, operationId.toString());
             return statement.executeUpdate() == 1;
@@ -1914,7 +1914,7 @@ public class DatabaseManager implements PlayerDataStore {
         try (var statement = connection.prepareStatement("""
                 UPDATE trade_item_operations SET status='DELIVERED',delivered_at=CURRENT_TIMESTAMP,
                     updated_at=CURRENT_TIMESTAMP
-                WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERING'
+                WHERE operation_id=? AND recipient_uuid=? AND status IN ('DELIVERING','DELIVERED')
                 """)) {
             statement.setString(1, operationId.toString());
             statement.setString(2, recipientUuid.toString());
