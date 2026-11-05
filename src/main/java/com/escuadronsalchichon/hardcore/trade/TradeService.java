@@ -380,6 +380,7 @@ public final class TradeService implements Listener {
                     quarantine(tradeId, null, null, "No se pudo limpiar el marcador de una entrega confirmada.");
                     return;
                 }
+                inventoryLocks.remove(recipient.getUniqueId());
             }
             processItems(tradeId, items, index + 1);
             return;
@@ -430,7 +431,10 @@ public final class TradeService implements Listener {
                 boolean marked = store.markTradeEscrowed(item.operationId());
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     if (!marked) quarantine(tradeId, null, null, "No se pudo confirmar la recuperación del escrow.");
-                    else reloadAndProcess(tradeId);
+                    else {
+                        inventoryLocks.remove(owner.getUniqueId());
+                        reloadAndProcess(tradeId);
+                    }
                 });
             });
             return;
@@ -880,7 +884,7 @@ public final class TradeService implements Listener {
                     }
                 }
                 if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
-                else if (items.stream().anyMatch(item -> item.status().equals("PREPARED")
+                else if (markerPresentAtJoin || items.stream().anyMatch(item -> item.status().equals("PREPARED")
                         || item.status().equals("RETURN_PENDING"))) resumeTrade(session.tradeId());
             });
         });
