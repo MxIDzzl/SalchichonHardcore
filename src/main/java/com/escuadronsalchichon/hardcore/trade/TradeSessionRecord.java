@@ -11,6 +11,12 @@ public record TradeSessionRecord(
             throw new IllegalArgumentException("Trade session fields cannot be null.");
         }
         if (playerA.equals(playerB) || revision < 0) throw new IllegalArgumentException("Invalid trade session.");
+        if (confirmedRevisionA != null && (confirmedRevisionA < 0 || confirmedRevisionA > revision)) {
+            throw new IllegalArgumentException("Invalid player A confirmation revision.");
+        }
+        if (confirmedRevisionB != null && (confirmedRevisionB < 0 || confirmedRevisionB > revision)) {
+            throw new IllegalArgumentException("Invalid player B confirmation revision.");
+        }
     }
 
     public boolean contains(UUID player) {
