@@ -128,7 +128,7 @@ public final class VaultInventoryService implements Listener {
                     player.sendMessage("§eNo se encontró el marcador del depósito. La operación queda bloqueada para revisión; no intentes repetirla.");
                     return;
                 }
-                removeMarkedItem(player, operationId);
+                removeMarkedStack(player, operationId);
                 try {
                     player.saveData();
                 } catch (RuntimeException failure) {
@@ -217,7 +217,7 @@ public final class VaultInventoryService implements Listener {
                     plugin.getLogger().warning("No se pudo resolver la operación " + operation.itemId() + " de " + player.getName() + ".");
                     return;
                 }
-                if (markerPresent) removeMarkedItem(player, operation.itemId());
+                if (markerPresent) clearMarkedItem(player, operation.itemId());
                 recoverNext(player, pending, index + 1);
             });
         });
@@ -243,7 +243,22 @@ public final class VaultInventoryService implements Listener {
         return null;
     }
 
-    private void removeMarkedItem(Player player, UUID operationId) {
+    private void removeMarkedStack(Player player, UUID operationId) {
+        ItemStack[] contents = player.getInventory().getContents();
+        boolean changed = false;
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
+            if (item == null || !item.hasItemMeta()) continue;
+            String marker = item.getItemMeta().getPersistentDataContainer()
+                    .get(depositMarker, PersistentDataType.STRING);
+            if (!operationId.toString().equals(marker)) continue;
+            contents[i] = null;
+            changed = true;
+        }
+        if (changed) player.getInventory().setContents(contents);
+    }
+
+    private void clearMarkedItem(Player player, UUID operationId) {
         ItemStack[] contents = player.getInventory().getContents();
         boolean changed = false;
         for (int i = 0; i < contents.length; i++) {
