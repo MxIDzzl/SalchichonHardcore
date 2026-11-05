@@ -1621,4 +1621,272 @@ public class DatabaseManager implements PlayerDataStore {
             connection = null;
         }
     }
+
+    @Override
+    public synchronized boolean createTradeSession(UUID tradeId, UUID playerA, UUID playerB) {
+        if (!isConnected() || tradeId == null || playerA == null || playerB == null || playerA.equals(playerB)) return false;
+        try {
+            connection.setAutoCommit(false);
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO trade_sessions(trade_id,player_a,player_b,status,revision)
+                    VALUES (?, ?, ?, 'OPEN', 0)
+                    """);
+                 var lock = connection.prepareStatement(
+                         "INSERT INTO trade_player_locks(player_uuid,trade_id) VALUES (?,?)")) {
+                insert.setString(1, tradeId.toString());
+                insert.setString(2, playerA.toString());
+                insert.setString(3, playerB.toString());
+                insert.executeUpdate();
+                lock.setString(1, playerA.toString());
+                lock.setString(2, tradeId.toString());
+                lock.addBatch();
+                lock.setString(1, playerB.toString());
+                lock.setString(2, tradeId.toString());
+                lock.addBatch();
+                lock.executeBatch();
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo crear la sesión de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean prepareTradeEscrowItem(TradeEscrowItem item) {
+        if (!isConnected() || item == null || !item.verifyPayload()) return false;
+        try {
+            connection.setAutoCommit(false);
+            UUID playerA;
+            UUID playerB;
+            long revision;
+            try (var query = connection.prepareStatement("""
+                    SELECT player_a,player_b,revision FROM trade_sessions
+                    WHERE trade_id=? AND status='OPEN'
+                    """)) {
+                query.setString(1, item.tradeId().toString());
+                try (var result = query.executeQuery()) {
+                    if (!result.next()) { connection.rollback(); return false; }
+                    playerA = UUID.fromString(result.getString(1));
+                    playerB = UUID.fromString(result.getString(2));
+                    revision = result.getLong(3);
+                }
+            }
+            boolean validPair = (item.ownerUuid().equals(playerA) && item.recipientUuid().equals(playerB))
+                    || (item.ownerUuid().equals(playerB) && item.recipientUuid().equals(playerA));
+            if (!validPair) { connection.rollback(); return false; }
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO trade_item_operations(operation_id,trade_id,owner_uuid,recipient_uuid,
+                        item_payload,item_fingerprint,status)
+                    VALUES (?,?,?,?,?,?,'PREPARED')
+                    """)) {
+                insert.setString(1, item.escrowItemId().toString());
+                insert.setString(2, item.tradeId().toString());
+                insert.setString(3, item.ownerUuid().toString());
+                insert.setString(4, item.recipientUuid().toString());
+                insert.setBytes(5, item.payload());
+                insert.setString(6, item.fingerprint());
+                insert.executeUpdate();
+            }
+            try (var update = connection.prepareStatement("""
+                    UPDATE trade_sessions SET revision=?,confirmed_revision_a=NULL,
+                        confirmed_revision_b=NULL,updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND revision=? AND status='OPEN'
+                    """)) {
+                update.setLong(1, Math.addExact(revision, 1));
+                update.setString(2, item.tradeId().toString());
+                update.setLong(3, revision);
+                if (update.executeUpdate() != 1) throw new SQLException("Trade revision changed unexpectedly.");
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException | ArithmeticException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public synchronized boolean markTradeEscrowed(UUID operationId) {
+        if (!isConnected() || operationId == null) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_item_operations SET status='ESCROWED',updated_at=CURRENT_TIMESTAMP
+                WHERE operation_id=? AND status='PREPARED'
+                """)) {
+            statement.setString(1, operationId.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar el escrow del objeto.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean advanceTradeRevision(UUID tradeId, UUID actor, long expectedRevision) {
+        if (!isConnected() || tradeId == null || actor == null || expectedRevision < 0) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
+                    confirmed_revision_b=NULL,updated_at=CURRENT_TIMESTAMP
+                WHERE trade_id=? AND status='OPEN' AND revision=?
+                  AND (player_a=? OR player_b=?)
+                """)) {
+            statement.setString(1, tradeId.toString());
+            statement.setLong(2, expectedRevision);
+            statement.setString(3, actor.toString());
+            statement.setString(4, actor.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo actualizar la revisión del intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean confirmTradeRevision(UUID tradeId, UUID actor, long expectedRevision) {
+        if (!isConnected() || tradeId == null || actor == null || expectedRevision < 0) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_sessions SET
+                    confirmed_revision_a=CASE WHEN player_a=? THEN revision ELSE confirmed_revision_a END,
+                    confirmed_revision_b=CASE WHEN player_b=? THEN revision ELSE confirmed_revision_b END,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE trade_id=? AND status='OPEN' AND revision=? AND (player_a=? OR player_b=?)
+                """)) {
+            statement.setString(1, actor.toString());
+            statement.setString(2, actor.toString());
+            statement.setString(3, tradeId.toString());
+            statement.setLong(4, expectedRevision);
+            statement.setString(5, actor.toString());
+            statement.setString(6, actor.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la revisión del intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean lockTradeForSettlement(UUID tradeId, long expectedRevision) {
+        if (!isConnected() || tradeId == null || expectedRevision < 0) return false;
+        try {
+            connection.setAutoCommit(false);
+            try (var update = connection.prepareStatement("""
+                    UPDATE trade_sessions SET status='LOCKED',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='OPEN' AND revision=?
+                      AND confirmed_revision_a=revision AND confirmed_revision_b=revision
+                      AND EXISTS (SELECT 1 FROM trade_item_operations o
+                                  WHERE o.trade_id=trade_sessions.trade_id)
+                      AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'ESCROWED')
+                    """)) {
+                update.setString(1, tradeId.toString());
+                update.setLong(2, expectedRevision);
+                if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (var updateItems = connection.prepareStatement("""
+                    UPDATE trade_item_operations SET status='DELIVERY_PENDING',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='ESCROWED'
+                    """)) {
+                updateItems.setString(1, tradeId.toString());
+                updateItems.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public synchronized boolean markTradeItemDelivering(UUID operationId, UUID recipientUuid) {
+        if (!isConnected() || operationId == null || recipientUuid == null) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_item_operations SET status='DELIVERING',updated_at=CURRENT_TIMESTAMP
+                WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERY_PENDING'
+                  AND EXISTS (SELECT 1 FROM trade_sessions t
+                              WHERE t.trade_id=trade_item_operations.trade_id AND t.status='LOCKED')
+                """)) {
+            statement.setString(1, operationId.toString());
+            statement.setString(2, recipientUuid.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo iniciar la entrega del objeto de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean markTradeItemDelivered(UUID operationId, UUID recipientUuid) {
+        if (!isConnected() || operationId == null || recipientUuid == null) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_item_operations SET status='DELIVERED',delivered_at=CURRENT_TIMESTAMP,
+                    updated_at=CURRENT_TIMESTAMP
+                WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERING'
+                """)) {
+            statement.setString(1, operationId.toString());
+            statement.setString(2, recipientUuid.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la entrega del objeto de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public synchronized boolean markTradeRecoveryRequired(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try {
+            connection.setAutoCommit(false);
+            try (var update = connection.prepareStatement("""
+                    UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='LOCKED'
+                    """)) {
+                update.setString(1, tradeId.toString());
+                if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (var updateItems = connection.prepareStatement("""
+                    UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status IN ('DELIVERY_PENDING','DELIVERING')
+                    """)) {
+                updateItems.setString(1, tradeId.toString());
+                updateItems.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
+    @Override
+    public synchronized boolean completeTrade(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try (var statement = connection.prepareStatement("""
+                UPDATE trade_sessions SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP
+                WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
+                  AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
+                  AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                  WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
+                """)) {
+            statement.setString(1, tradeId.toString());
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo finalizar el intercambio.");
+            return false;
+        }
+    }
+
 }
