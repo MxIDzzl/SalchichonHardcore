@@ -43,6 +43,7 @@ public final class VaultMenu {
             lore.add(Component.text("Identificador: " + record.itemId().toString().substring(0, 8)));
             lore.add(Component.text(" "));
             lore.add(Component.text("Almacén personal · No transferible"));
+            lore.add(Component.text("§aClic para retirar este objeto"));
             meta.lore(lore);
             icon.setItemMeta(meta);
             inventory.setItem(i, icon);
