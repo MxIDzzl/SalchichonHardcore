@@ -8,6 +8,7 @@ This procedure is deliberately conservative. A trade marked `RECOVERY_REQUIRED` 
 - Player Value, vault items, currency, totems, and life counters are outside trade recovery.
 - The admin API endpoint `GET /api/v1/admin/trades/recovery` is an inspection aid only. It never returns serialized item payloads and cannot force delivery or cancellation.
 - The existing `/hardcore trade-status <player>` command is read-only.
+- `/hardcore trade-evidence <player>` scans online participant inventories (storage, armor, offhand, ender chest) and item entities in currently loaded chunks. It is read-only and reports marker/fingerprint matches or discrepancies.
 - Do not perform this procedure on the live production world until the complete staging checklist and backup/restore rehearsal have passed.
 
 ## Immediate containment
@@ -22,7 +23,8 @@ This procedure is deliberately conservative. A trade marked `RECOVERY_REQUIRED` 
 
 1. Query `GET /api/v1/admin/trades/recovery?limit=100&offset=0` through the private admin gateway, if configured.
 2. Record trade ID, session state/revision, both participants, operation ID, owner, recipient, status, fingerprint, and timestamps.
-3. Cross-check with `/hardcore trade-status <player>` when safe to bring the isolated staging copy online.
+3. Cross-check with `/hardcore trade-status <player>` and `/hardcore trade-evidence <player>` when safe to bring the isolated staging copy online.
+4. Treat the evidence command as a partial live-world view only: it cannot inspect offline playerdata, unloaded chunks, backups, or historical inventory states. A dropped item has no reliable owner attribution from its marker alone.
 4. The fingerprint is a SHA-256 digest of the serialized server-side item payload. It is evidence for comparison, not a way to reconstruct an item.
 5. Do not query or export `item_payload` through the admin API. The API intentionally never selects or serializes that column.
 
@@ -40,7 +42,7 @@ A missing marker is not proof that an item was removed or delivered. A marker wi
 
 ## Current limitation / prohibited actions
 
-The current staff tools expose durable database state and fingerprints, but do not yet provide a complete in-game PDC inventory evidence viewer or an audited reconciliation command. Therefore, if the evidence above cannot be established unambiguously, leave the session quarantined as `RECOVERY_REQUIRED`, preserve the backups, and escalate for code-level investigation.
+The current staff tools expose durable database state and fingerprints, plus a read-only in-game scan of online inventories and loaded dropped items. They do not provide a complete offline/chunk-unloaded evidence view or an audited reconciliation command. Therefore, if the evidence above cannot be established unambiguously, leave the session quarantined as `RECOVERY_REQUIRED`, preserve the backups, and escalate for code-level investigation.
 
 Never:
 - edit trade rows or statuses manually in SQL;
@@ -53,7 +55,7 @@ Never:
 ## Release gate
 
 Trade recovery is not production-ready until:
-- a server-side evidence inspection tool can safely compare PDC markers and exact item fingerprints;
+- a complete server-side evidence workflow can inspect online inventories, offline playerdata, loaded and unloaded chunk item entities, and exact item fingerprints without mutation;
 - a staff reconciliation workflow has transactional, audited, idempotent transitions;
 - crash-injection tests cover PREPARED, ESCROWED, DELIVERY_PENDING, DELIVERING, RETURN_PENDING, and acknowledgement boundaries on both SQLite and PostgreSQL;
 - staging proves no duplication or loss across restart, disconnect, full inventory, and database failure scenarios;
