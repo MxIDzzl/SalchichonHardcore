@@ -23,8 +23,8 @@ public record TradeSessionSnapshot(
         Objects.requireNonNull(status, "status");
         if (playerA.equals(playerB)) throw new IllegalArgumentException("A trade needs two distinct players.");
         if (revision < 0) throw new IllegalArgumentException("revision cannot be negative.");
-        if (confirmedRevisionA != null && confirmedRevisionA < 0) throw new IllegalArgumentException("invalid confirmation");
-        if (confirmedRevisionB != null && confirmedRevisionB < 0) throw new IllegalArgumentException("invalid confirmation");
+        if (confirmedRevisionA != null && (confirmedRevisionA < 0 || confirmedRevisionA > revision)) throw new IllegalArgumentException("invalid confirmation");
+        if (confirmedRevisionB != null && (confirmedRevisionB < 0 || confirmedRevisionB > revision)) throw new IllegalArgumentException("invalid confirmation");
     }
 
     public boolean contains(UUID player) {
