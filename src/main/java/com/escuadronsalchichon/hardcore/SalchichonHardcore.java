@@ -124,6 +124,7 @@ public class SalchichonHardcore extends JavaPlugin {
         tradeCommand.setExecutor(tradeExecutor);
         tradeCommand.setTabCompleter(tradeExecutor);
         getServer().getPluginManager().registerEvents(tradeService, this);
+        getServer().getPluginManager().registerEvents(new TradeMenuListener(tradeService), this);
 
         for (var world : Bukkit.getWorlds()) {
             worldRuleManager.applyRules(world);
