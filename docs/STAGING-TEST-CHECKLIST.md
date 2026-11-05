@@ -27,7 +27,7 @@ This build is for a maintenance-window staging test only. It is not a production
 ## Do not test / do not assume
 
 - Player Value viewer, deposits, withdrawals, PDC markers, durable claims, and conservative recovery are implemented. Keep `player-value.enabled: false` until crash-injection tests, staging inventory validation, and backup/restore are complete.
-- The item-only trade workflow, bilateral GUI, revision-bound confirmations, escrow, returns, settlement, and expiry are implemented. Keep `trade.enabled: false` except on disposable staging accounts/worlds. Staff reconciliation for `RECOVERY_REQUIRED` and automated crash-injection coverage remain release gates.
+- The item-only trade workflow, bilateral GUI, revision-bound confirmations, escrow, returns, settlement, and expiry are implemented. Keep `trade.enabled: false` except on disposable staging accounts/worlds. Staff reconciliation for `RECOVERY_REQUIRED` and automated crash-injection coverage remain release gates. Follow [TRADE-RECOVERY-RUNBOOK.md](TRADE-RECOVERY-RUNBOOK.md); the current API endpoint and `/hardcore trade-status` are inspection-only and do not resolve uncertain inventory state.
 - PostgreSQL schema/pool and the one-way legacy SQLite importer are implemented, but PostgreSQL remains disabled. Do not perform a production cutover until a fresh-database import and full integration/rollback rehearsal pass.
 - The read-only API and public web portal are separate services in `SalchichonSMP-Updates`; this plugin repository does not bundle or deploy them. No browser receives database credentials.
 - The admin page is informational only; no real admin authentication or mutation endpoints exist yet.
