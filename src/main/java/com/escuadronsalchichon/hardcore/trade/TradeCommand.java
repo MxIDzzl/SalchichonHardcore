@@ -34,7 +34,7 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
             sender.sendMessage("§cEste comando solo puede utilizarse dentro del juego.");
             return true;
         }
-        if (!plugin.getConfig().getBoolean("trade.enabled", true)) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
             player.sendMessage("§cLos intercambios están desactivados por configuración.");
             return true;
         }
