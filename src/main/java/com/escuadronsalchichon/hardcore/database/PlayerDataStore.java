@@ -118,6 +118,10 @@ public interface PlayerDataStore {
 
     boolean cancelEmptyTrade(UUID tradeId, UUID actor);
 
+    java.util.List<UUID> expireStaleTrades();
+
+    boolean completeExpiredTrade(UUID tradeId);
+
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
     VaultRecoverySummary getVaultRecoverySummary();
