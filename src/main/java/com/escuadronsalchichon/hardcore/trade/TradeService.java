@@ -243,7 +243,7 @@ public final class TradeService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (!cancelled) {
-                    player.sendMessage("§cSolo puedes cancelar un intercambio abierto que todavía no tenga objetos ofrecidos.");
+                    player.sendMessage("§cSolo puedes cancelar un intercambio abierto cuando todos los objetos ofrecidos ya fueron devueltos.");
                     return;
                 }
                 tradeParticipants.remove(session.tradeId());
