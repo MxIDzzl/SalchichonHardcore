@@ -1,0 +1,614 @@
+package com.escuadronsalchichon.hardcore.trade;
+
+import com.escuadronsalchichon.hardcore.SalchichonHardcore;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
+import org.bukkit.Bukkit;
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.event.player.PlayerSwapHandItemsEvent;
+import org.bukkit.inventory.Inventory;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/**
+ * Server-authoritative, item-only trade workflow.
+ * Inventory mutations are performed on the Paper main thread; durable state
+ * transitions are performed asynchronously before/after those mutations.
+ */
+public final class TradeService implements Listener {
+    private final SalchichonHardcore plugin;
+    private final PlayerDataStore store;
+    private final NamespacedKey escrowMarker;
+    private final NamespacedKey deliveryMarker;
+    private final Set<UUID> inventoryLocks = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> processingTrades = ConcurrentHashMap.newKeySet();
+
+    public TradeService(SalchichonHardcore plugin, PlayerDataStore store) {
+        this.plugin = plugin;
+        this.store = store;
+        this.escrowMarker = new NamespacedKey(plugin, "trade-escrow-operation");
+        this.deliveryMarker = new NamespacedKey(plugin, "trade-delivery-operation");
+    }
+
+    public void createTrade(Player a, Player b) {
+        if (a.getUniqueId().equals(b.getUniqueId())) {
+            a.sendMessage("§cNo puedes intercambiar contigo mismo.");
+            return;
+        }
+        UUID tradeId = UUID.randomUUID();
+        UUID aId = a.getUniqueId();
+        UUID bId = b.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord aTrade = store.getActiveTrade(aId);
+            TradeSessionRecord bTrade = store.getActiveTrade(bId);
+            boolean created = aTrade == null && bTrade == null && store.createTradeSession(tradeId, aId, bId);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!a.isOnline() || !b.isOnline()) return;
+                if (!created) {
+                    a.sendMessage("§cUno de los dos ya participa en un intercambio o no se pudo crear la sesión.");
+                    b.sendMessage("§cNo se pudo iniciar el intercambio.");
+                    return;
+                }
+                a.sendMessage("§dIntercambio iniciado con §f" + b.getName() + "§d. Usa §f/trade offer §dpara ofrecer el objeto de tu mano.");
+                b.sendMessage("§dIntercambio iniciado con §f" + a.getName() + "§d. Usa §f/trade offer §dpara ofrecer objetos.");
+                sendStatus(a, tradeId);
+                sendStatus(b, tradeId);
+            });
+        });
+    }
+
+    public void offer(Player player) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", true)) {
+            player.sendMessage("§cLos intercambios están desactivados por configuración.");
+            return;
+        }
+        UUID playerId = player.getUniqueId();
+        if (!inventoryLocks.add(playerId)) {
+            player.sendMessage("§eTu inventario está ocupado por otra operación.");
+            return;
+        }
+        ItemStack original = player.getInventory().getItemInMainHand();
+        if (original.getType().isAir()) {
+            inventoryLocks.remove(playerId);
+            player.sendMessage("§cSostén en la mano el objeto que deseas ofrecer.");
+            return;
+        }
+        if (hasMarker(original)) {
+            inventoryLocks.remove(playerId);
+            player.sendMessage("§cEse objeto tiene un marcador de operación y no puede volver a ofrecerse.");
+            return;
+        }
+        ItemStack payloadItem = original.clone();
+        TradeEscrowItem escrow = null;
+        UUID tradeId = null;
+        player.sendMessage("§8Preparando objeto para escrow...");
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            if (session == null || session.status() != TradeStatus.OPEN || !session.contains(playerId)) {
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    inventoryLocks.remove(playerId);
+                    player.sendMessage("§cNo tienes un intercambio abierto.");
+                });
+                return;
+            }
+            UUID operationId = UUID.randomUUID();
+            UUID recipient = session.other(playerId);
+            TradeEscrowItem record = new TradeEscrowItem(operationId, session.tradeId(),
+                    playerId, recipient, payloadItem.serializeAsBytes(),
+                    TradeEscrowItem.fingerprint(payloadItem.serializeAsBytes()));
+            boolean prepared = store.prepareTradeEscrowItem(record);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) {
+                    if (prepared) quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "El jugador salió durante la preparación del escrow.");
+                    return;
+                }
+                if (!prepared) {
+                    inventoryLocks.remove(playerId);
+                    player.sendMessage("§cNo se pudo preparar el escrow. El objeto no fue retirado.");
+                    return;
+                }
+                ItemStack current = player.getInventory().getItemInMainHand();
+                if (current == null || !current.isSimilar(payloadItem) || current.getAmount() != payloadItem.getAmount()) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "El objeto ofrecido cambió durante la preparación.");
+                    return;
+                }
+                ItemStack marked = current.clone();
+                if (!writeMarker(marked, escrowMarker, operationId)) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "No se pudo escribir el marcador de escrow.");
+                    return;
+                }
+                player.getInventory().setItemInMainHand(marked);
+                if (!savePlayer(player)) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "No se pudo guardar el marcador de escrow.");
+                    return;
+                }
+                ItemStack check = player.getInventory().getItemInMainHand();
+                if (!hasMarker(check, escrowMarker, operationId)) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "El marcador de escrow no aparece en el inventario.");
+                    return;
+                }
+                player.getInventory().setItemInMainHand(null);
+                if (!savePlayer(player)) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "No se pudo guardar la retirada del objeto.");
+                    return;
+                }
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean stored = store.markTradeEscrowed(operationId);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!stored) {
+                            quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                                    "No se pudo confirmar el objeto en escrow.");
+                            return;
+                        }
+                        inventoryLocks.remove(playerId);
+                        player.sendMessage("§aObjeto ofrecido correctamente. §7La oferta cambió; ambos deben confirmar de nuevo.");
+                        Player other = Bukkit.getPlayer(recipient);
+                        if (other != null) other.sendMessage("§d" + player.getName() + " §7añadió un objeto a la oferta.");
+                        sendStatus(player, session.tradeId());
+                        if (other != null) sendStatus(other, session.tradeId());
+                    });
+                });
+            });
+        });
+    }
+
+    public void confirm(Player player) {
+        UUID playerId = player.getUniqueId();
+        player.sendMessage("§8Registrando tu confirmación...");
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            boolean confirmed = session != null && session.status() == TradeStatus.OPEN
+                    && store.confirmTradeRevision(session.tradeId(), playerId, session.revision());
+            TradeSessionRecord updated = confirmed ? store.getActiveTrade(playerId) : null;
+            boolean locked = updated != null && updated.bothConfirmed()
+                    && store.lockTradeForSettlement(updated.tradeId(), updated.revision());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (!confirmed) {
+                    player.sendMessage("§cNo se pudo confirmar: no hay una oferta abierta o esta cambió.");
+                    return;
+                }
+                if (!locked) {
+                    player.sendMessage("§aTu confirmación quedó registrada. §7Esperando a la otra persona.");
+                    Player other = Bukkit.getPlayer(session.other(playerId));
+                    if (other != null) other.sendMessage("§d" + player.getName() + " §7confirmó la oferta actual.");
+                    return;
+                }
+                player.sendMessage("§eAmbos confirmaron. El intercambio quedó bloqueado y comenzó la entrega segura.");
+                resumeTrade(updated.tradeId());
+            });
+        });
+    }
+
+    public void status(Player player) {
+        UUID playerId = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            List<TradeEscrowRecord> items = session == null ? List.of() : store.getTradeItems(session.tradeId());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (session == null) {
+                    player.sendMessage("§7No tienes un intercambio activo.");
+                    return;
+                }
+                player.sendMessage("§d§lIntercambio");
+                player.sendMessage("§7Estado: §f" + session.status() + " §8| §7Revisión: §f" + session.revision());
+                player.sendMessage("§7Participante: §f" + Bukkit.getOfflinePlayer(session.other(playerId)).getName());
+                player.sendMessage("§7Objetos ofrecidos: §f" + items.size());
+                player.sendMessage("§7Tu confirmación: " + (session.isConfirmed(playerId) ? "§aSí" : "§cNo"));
+                player.sendMessage("§7Otra confirmación: " + (session.isConfirmed(session.other(playerId)) ? "§aSí" : "§cNo"));
+                player.sendMessage("§8Usa /trade offer para añadir el objeto de tu mano y /trade confirm para aceptar.");
+                if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
+                if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
+                    inventoryLocks.add(playerId);
+                    player.sendMessage("§cEste intercambio está aislado para revisión; no muevas posibles objetos marcados.");
+                }
+            });
+        });
+    }
+
+    private void resumeTrade(UUID tradeId) {
+        if (!processingTrades.add(tradeId)) return;
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            List<TradeEscrowRecord> items = store.getTradeItems(tradeId);
+            Bukkit.getScheduler().runTask(plugin, () -> processItems(tradeId, items, 0));
+        });
+    }
+
+    private void processItems(UUID tradeId, List<TradeEscrowRecord> items, int index) {
+        if (index >= items.size()) {
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                boolean complete = store.completeTrade(tradeId);
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    processingTrades.remove(tradeId);
+                    if (complete) {
+                        TradeSessionRecord finished = null;
+                        for (Player online : Bukkit.getOnlinePlayers()) {
+                            if (inventoryLocks.remove(online.getUniqueId())) {
+                                online.sendMessage("§a§l¡Intercambio completado!");
+                            }
+                        }
+                        plugin.getLogger().info("Intercambio completado: " + tradeId);
+                    }
+                });
+            });
+            return;
+        }
+        TradeEscrowRecord item = items.get(index);
+        if ("DELIVERED".equals(item.status())) {
+            Player recipient = Bukkit.getPlayer(item.recipientUuid());
+            if (recipient != null && hasOperationMarker(recipient, deliveryMarker, item.operationId())) {
+                if (!stripOperationMarker(recipient, deliveryMarker, item.operationId()) || !savePlayer(recipient)) {
+                    quarantine(tradeId, null, null, "No se pudo limpiar el marcador de una entrega confirmada.");
+                    return;
+                }
+            }
+            processItems(tradeId, items, index + 1);
+            return;
+        }
+        if ("RECOVERY_REQUIRED".equals(item.status()) || "RETURN_PENDING".equals(item.status())) {
+            quarantine(tradeId, null, null, "El escrow contiene una operación que requiere revisión.");
+            return;
+        }
+        if ("PREPARED".equals(item.status())) {
+            Player owner = Bukkit.getPlayer(item.ownerUuid());
+            if (owner == null) {
+                processingTrades.remove(tradeId);
+                return;
+            }
+            if (!hasOperationMarker(owner, escrowMarker, item.operationId())) {
+                quarantine(tradeId, null, null, "No existe evidencia del marcador de escrow preparado.");
+                return;
+            }
+            removeOperationMarkeredStack(owner, escrowMarker, item.operationId());
+            if (!savePlayer(owner)) {
+                quarantine(tradeId, null, null, "No se pudo guardar la recuperación del escrow.");
+                return;
+            }
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                boolean marked = store.markTradeEscrowed(item.operationId());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (!marked) quarantine(tradeId, null, null, "No se pudo confirmar la recuperación del escrow.");
+                    else resumeTrade(tradeId);
+                });
+            });
+            return;
+        }
+        if ("DELIVERING".equals(item.status())) {
+            Player recipient = Bukkit.getPlayer(item.recipientUuid());
+            if (recipient == null) {
+                processingTrades.remove(tradeId);
+                return;
+            }
+            ItemStack marked = findOperationMarkedStack(recipient, deliveryMarker, item.operationId());
+            if (marked == null || !matchesPayload(marked, item.payload(), deliveryMarker)) {
+                quarantine(tradeId, null, null, "Una entrega interrumpida no tiene evidencia íntegra.");
+                return;
+            }
+            acknowledgeRecoveredDelivery(tradeId, item, recipient, index, items);
+            return;
+        }
+        if ("DELIVERY_PENDING".equals(item.status())) {
+            Player recipient = Bukkit.getPlayer(item.recipientUuid());
+            if (recipient == null) {
+                processItems(tradeId, items, index + 1);
+                return;
+            }
+            deliver(tradeId, item, recipient, index, items);
+            return;
+        }
+        quarantine(tradeId, null, null, "Estado de escrow desconocido: " + item.status());
+    }
+
+    private void deliver(UUID tradeId, TradeEscrowRecord item, Player recipient,
+                         int index, List<TradeEscrowRecord> allItems) {
+        ItemStack payload;
+        try {
+            payload = ItemStack.deserializeBytes(item.payload());
+        } catch (RuntimeException invalid) {
+            quarantine(tradeId, null, null, "El objeto almacenado no se puede deserializar.");
+            return;
+        }
+        if (payload == null || payload.getType().isAir()
+                || !TradeEscrowItem.fingerprint(payload.serializeAsBytes()).equals(item.fingerprint())) {
+            quarantine(tradeId, null, null, "La huella del objeto almacenado no coincide.");
+            return;
+        }
+        if (!canFit(recipient, payload)) {
+            recipient.sendMessage("§eTu inventario está lleno. Libera espacio y usa /trade status para reanudar la entrega.");
+            processItems(tradeId, allItems, index + 1);
+            return;
+        }
+        ItemStack marked = payload.clone();
+        if (!writeMarker(marked, deliveryMarker, item.operationId())) {
+            quarantine(tradeId, null, null, "No se pudo escribir el marcador de entrega.");
+            return;
+        }
+        inventoryLocks.add(recipient.getUniqueId());
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean started = store.markTradeItemDelivering(item.operationId(), recipient.getUniqueId());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!started) {
+                    quarantine(tradeId, null, null, "No se pudo iniciar la entrega durable.");
+                    return;
+                }
+                var leftovers = recipient.getInventory().addItem(marked);
+                if (!leftovers.isEmpty() || !savePlayer(recipient)) {
+                    quarantine(tradeId, null, null, "La entrega no pudo guardarse de forma concluyente.");
+                    return;
+                }
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean acknowledged = store.markTradeItemDelivered(item.operationId(), recipient.getUniqueId());
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!acknowledged) {
+                            quarantine(tradeId, null, null, "El objeto está marcado pero falta el acuse durable.");
+                            return;
+                        }
+                        if (!stripOperationMarker(recipient, deliveryMarker, item.operationId()) || !savePlayer(recipient)) {
+                            quarantine(tradeId, null, null, "No se pudo limpiar el marcador tras confirmar la entrega.");
+                            return;
+                        }
+                        inventoryLocks.remove(recipient.getUniqueId());
+                        recipient.sendMessage("§aRecibiste un objeto del intercambio.");
+                        processItems(tradeId, allItems, index + 1);
+                    });
+                });
+            });
+        });
+    }
+
+    private void acknowledgeRecoveredDelivery(UUID tradeId, TradeEscrowRecord item, Player recipient,
+                                              int index, List<TradeEscrowRecord> allItems) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean acknowledged = store.markTradeItemDelivered(item.operationId(), recipient.getUniqueId());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!acknowledged || !stripOperationMarker(recipient, deliveryMarker, item.operationId())
+                        || !savePlayer(recipient)) {
+                    quarantine(tradeId, null, null, "No se pudo cerrar una entrega recuperada.");
+                    return;
+                }
+                inventoryLocks.remove(recipient.getUniqueId());
+                processItems(tradeId, allItems, index + 1);
+            });
+        });
+    }
+
+    private void quarantine(UUID tradeId, UUID aId, UUID bId, String reason) {
+        if (aId != null) inventoryLocks.add(aId);
+        if (bId != null) inventoryLocks.add(bId);
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            boolean isolated = store.markTradeRecoveryRequired(tradeId);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                processingTrades.remove(tradeId);
+                TradeSessionRecord session = aId == null ? null : null;
+                if (aId != null) {
+                    Player a = Bukkit.getPlayer(aId);
+                    if (a != null) a.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
+                }
+                if (bId != null) {
+                    Player b = Bukkit.getPlayer(bId);
+                    if (b != null) b.sendMessage("§cEl intercambio fue aislado para recuperación: " + reason);
+                }
+                if (aId == null && bId == null) {
+                    for (Player online : Bukkit.getOnlinePlayers()) {
+                        TradeSessionRecord active = store.getActiveTrade(online.getUniqueId());
+                        if (active != null && active.tradeId().equals(tradeId)) {
+                            inventoryLocks.add(online.getUniqueId());
+                            online.sendMessage("§cEl intercambio requiere revisión manual. No muevas objetos marcados.");
+                        }
+                    }
+                }
+                plugin.getLogger().warning("Trade " + tradeId + " aislado (" + isolated + "): " + reason);
+            });
+        });
+    }
+
+    private void sendStatus(Player player, UUID tradeId) {
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(player.getUniqueId());
+            List<TradeEscrowRecord> items = store.getTradeItems(tradeId);
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (session == null || !player.isOnline()) return;
+                player.sendMessage("§7Revisión " + session.revision() + " · objetos en escrow: " + items.size());
+            });
+        });
+    }
+
+    private boolean canFit(Player player, ItemStack item) {
+        try {
+            Inventory simulated = Bukkit.createInventory(null, 36);
+            ItemStack[] contents = player.getInventory().getStorageContents();
+            ItemStack[] copy = new ItemStack[contents.length];
+            for (int i = 0; i < contents.length; i++) copy[i] = contents[i] == null ? null : contents[i].clone();
+            simulated.setStorageContents(copy);
+            return simulated.addItem(item.clone()).isEmpty();
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private boolean savePlayer(Player player) {
+        try {
+            player.saveData();
+            return true;
+        } catch (RuntimeException exception) {
+            plugin.getLogger().warning("No se pudo guardar el inventario de " + player.getName() + ".");
+            return false;
+        }
+    }
+
+    private boolean writeMarker(ItemStack item, NamespacedKey key, UUID operationId) {
+        try {
+            ItemMeta meta = item.getItemMeta();
+            if (meta == null) return false;
+            meta.getPersistentDataContainer().set(key, PersistentDataType.STRING, operationId.toString());
+            item.setItemMeta(meta);
+            return true;
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private boolean hasMarker(ItemStack item) {
+        return hasMarker(item, escrowMarker) || hasMarker(item, deliveryMarker);
+    }
+
+    private boolean hasMarker(ItemStack item, NamespacedKey key) {
+        return item != null && item.hasItemMeta()
+                && item.getItemMeta().getPersistentDataContainer().has(key, PersistentDataType.STRING);
+    }
+
+    private boolean hasMarker(ItemStack item, NamespacedKey key, UUID operationId) {
+        return item != null && item.hasItemMeta()
+                && operationId.toString().equals(item.getItemMeta().getPersistentDataContainer()
+                .get(key, PersistentDataType.STRING));
+    }
+
+    private boolean hasOperationMarker(Player player, NamespacedKey key, UUID operationId) {
+        return findOperationMarkedStack(player, key, operationId) != null;
+    }
+
+    private ItemStack findOperationMarkedStack(Player player, NamespacedKey key, UUID operationId) {
+        ItemStack found = null;
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (!hasMarker(item, key, operationId)) continue;
+            if (found != null) return null;
+            found = item;
+        }
+        return found;
+    }
+
+    private boolean stripOperationMarker(Player player, NamespacedKey key, UUID operationId) {
+        ItemStack[] contents = player.getInventory().getContents();
+        int matches = 0;
+        for (int i = 0; i < contents.length; i++) {
+            ItemStack item = contents[i];
+            if (!hasMarker(item, key, operationId)) continue;
+            matches++;
+            ItemMeta meta = item.getItemMeta();
+            meta.getPersistentDataContainer().remove(key);
+            item.setItemMeta(meta);
+            contents[i] = item;
+        }
+        if (matches != 1) return false;
+        player.getInventory().setContents(contents);
+        return true;
+    }
+
+    private void removeOperationMarkeredStack(Player player, NamespacedKey key, UUID operationId) {
+        ItemStack[] contents = player.getInventory().getContents();
+        for (int i = 0; i < contents.length; i++) {
+            if (hasMarker(contents[i], key, operationId)) contents[i] = null;
+        }
+        player.getInventory().setContents(contents);
+    }
+
+    private boolean matchesPayload(ItemStack marked, byte[] payload, NamespacedKey key) {
+        try {
+            ItemStack copy = marked.clone();
+            ItemMeta meta = copy.getItemMeta();
+            meta.getPersistentDataContainer().remove(key);
+            copy.setItemMeta(meta);
+            return TradeEscrowItem.fingerprint(copy.serializeAsBytes())
+                    .equals(TradeEscrowItem.fingerprint(payload));
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    @EventHandler
+    public void onJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        UUID playerId = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            if (session == null) return;
+            List<TradeEscrowRecord> items = store.getTradeItems(session.tradeId());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
+                    inventoryLocks.add(playerId);
+                    player.sendMessage("§cTienes un intercambio aislado para revisión manual. No muevas objetos marcados.");
+                    return;
+                }
+                for (TradeEscrowRecord item : items) {
+                    if (item.status().equals("DELIVERING") && item.recipientUuid().equals(playerId)) {
+                        ItemStack marked = findOperationMarkedStack(player, deliveryMarker, item.operationId());
+                        if (marked == null || !matchesPayload(marked, item.payload(), deliveryMarker)) {
+                            quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                                    "Entrega interrumpida sin marcador íntegro al reconectar.");
+                            return;
+                        }
+                    }
+                    if (item.status().equals("PREPARED") && item.ownerUuid().equals(playerId)
+                            && !hasOperationMarker(player, escrowMarker, item.operationId())) {
+                        quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                                "Depósito a escrow PREPARED sin marcador al reconectar.");
+                        return;
+                    }
+                }
+                if (session.status() == TradeStatus.LOCKED) resumeTrade(session.tradeId());
+                else if (items.stream().anyMatch(item -> item.status().equals("PREPARED"))) resumeTrade(session.tradeId());
+            });
+        });
+    }
+
+    @EventHandler
+    public void onClick(InventoryClickEvent event) {
+        if (inventoryLocks.contains(event.getWhoClicked().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onDrag(InventoryDragEvent event) {
+        if (inventoryLocks.contains(event.getWhoClicked().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onDrop(PlayerDropItemEvent event) {
+        if (inventoryLocks.contains(event.getPlayer().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onSwap(PlayerSwapHandItemsEvent event) {
+        if (inventoryLocks.contains(event.getPlayer().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onInteract(PlayerInteractEvent event) {
+        if (inventoryLocks.contains(event.getPlayer().getUniqueId())) event.setCancelled(true);
+    }
+
+    @EventHandler
+    public void onPickup(EntityPickupItemEvent event) {
+        if (event.getEntity() instanceof Player player && inventoryLocks.contains(player.getUniqueId())) {
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        inventoryLocks.remove(event.getPlayer().getUniqueId());
+    }
+}
