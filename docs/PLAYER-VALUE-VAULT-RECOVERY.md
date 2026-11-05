@@ -142,3 +142,19 @@ Esto evita la carrera de cooldown en la capa de persistencia, pero no habilita l
 ## Read-only operational status command
 
 Administrators can run `/hardcore vault-status` to inspect durable operation counts without changing data or delivering items. It reports PREPARED deposits, DELIVERY_PENDING withdrawals, and RECOVERY_REQUIRED operations split by deposit/withdrawal. The query is implemented by both SQLite and PostgreSQL adapters. This is an observability aid only: it does not reconcile inventory evidence, unlock a player, cancel an operation, or authorize enabling Player Value.
+
+
+## Inventory-backed deposit adapter — 2026-11-05
+
+The plugin now has a first inventory-backed deposit path and a read-only paginated viewer:
+
+- `/value [page]` opens a 45-item-per-page vault view. Menu interactions are owner-bound and all click/drag transfers are cancelled. Database reads run asynchronously; inventory construction happens on the server thread.
+- `/value deposit` accepts only the configured plain-item allow-list from the main hand. It serializes the original item before adding a plugin-owned PDC operation marker.
+- The marker is saved to player data before the durable `DEPOSIT/PREPARED` row is written. Only after the journal write succeeds is the marked stack removed and player data saved again; the aggregate score and vault row are then committed transactionally.
+- On join, the player inventory is locked while uncertain deposits are read and reconciled. If the exact operation marker remains, the journal is cancelled and the item is kept. If the marker is absent, the saved inventory mutation is treated as completed and the durable deposit is committed. Unknown orphan markers are stripped only after the pending journal set has been resolved.
+- An ambiguous response from the PREPARED write is not treated as a definite failure: the service queries the durable journal and reconciles before releasing the inventory lock.
+- The inventory lock blocks click/drag, drop, swap, interaction, and item pickup during deposit/recovery. Disconnects release only the in-memory lock; the PDC marker and database journal survive for the next join.
+
+Both database adapters now support listing uncertain deposits, committing PREPARED or RECOVERY_REQUIRED deposits idempotently, and cancelling a deposit only when recovery finds its marker still present. The terminal state uses the schema-supported `CANCELLED` value.
+
+**Still not release-ready:** withdrawals do not yet have the PDC-backed delivery/reconciliation adapter; no full crash-injection integration suite has been run against live SQLite and PostgreSQL; and the feature remains `enabled: false` by default. Do not enable it on the live server based only on unit/build CI.
