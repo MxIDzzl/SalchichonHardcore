@@ -99,12 +99,15 @@ public final class TradeEvidenceScanner {
             return;
         }
 
-        boolean expectedMarker = "ESCROW".equals(markerType)
-                ? "PREPARED".equals(operation.status()) && operation.ownerUuid().equals(holder)
-                : (("DELIVERING".equals(operation.status()) || "DELIVERED".equals(operation.status()))
-                    && operation.recipientUuid().equals(holder))
-                  || (("RETURN_PENDING".equals(operation.status()) || "RETURNED".equals(operation.status()))
-                    && operation.ownerUuid().equals(holder));
+        boolean expectedState = "ESCROW".equals(markerType)
+                ? "PREPARED".equals(operation.status())
+                : "DELIVERING".equals(operation.status()) || "DELIVERED".equals(operation.status())
+                    || "RETURN_PENDING".equals(operation.status()) || "RETURNED".equals(operation.status());
+        boolean expectedHolder = holder == null
+                || ("ESCROW".equals(markerType) && operation.ownerUuid().equals(holder))
+                || ("DELIVERY".equals(markerType)
+                    && (operation.recipientUuid().equals(holder) || operation.ownerUuid().equals(holder)));
+        boolean expectedMarker = expectedState && expectedHolder;
         boolean fingerprintMatches = false;
         try {
             ItemStack copy = marked.clone();
