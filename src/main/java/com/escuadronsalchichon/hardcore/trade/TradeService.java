@@ -200,6 +200,27 @@ public final class TradeService implements Listener {
         });
     }
 
+    public void openMenu(Player player, int page) {
+        UUID playerId = player.getUniqueId();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            TradeSessionRecord session = store.getActiveTrade(playerId);
+            List<TradeEscrowRecord> items = session == null ? List.of() : store.getTradeItems(session.tradeId());
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (session == null) {
+                    player.sendMessage("§7No tienes un intercambio activo. Usa §f/trade <jugador>§7 para invitar a alguien.");
+                    return;
+                }
+                if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
+                    inventoryLocks.add(playerId);
+                    player.sendMessage("§cEste intercambio requiere revisión manual; no muevas objetos marcados.");
+                    return;
+                }
+                player.openInventory(TradeMenu.create(playerId, session, items, page));
+            });
+        });
+    }
+
     public void status(Player player) {
         UUID playerId = player.getUniqueId();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
