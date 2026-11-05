@@ -1585,9 +1585,9 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                          WHERE o.trade_id=? AND o.status<>'RETURNED'
                      )
                      """)) {
-            connection.setObject(1, tradeId);
-            connection.setObject(2, tradeId);
-            connection.setObject(3, tradeId);
+            release.setObject(1, tradeId);
+            release.setObject(2, tradeId);
+            release.setObject(3, tradeId);
             if (release.executeUpdate() > 0) return true;
             try (PreparedStatement verify = connection.prepareStatement("""
                     SELECT 1 FROM trade_sessions t
