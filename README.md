@@ -99,20 +99,4 @@ The feature remains disabled by default in `config.yml`. Withdrawals now use a d
 
 ## Intercambios de objetos
 
-El sistema de intercambio bilateral está implementado en el código, pero permanece **desactivado por defecto** (`trade.enabled: false`) hasta completar pruebas de staging y recuperación.
-
-Comandos disponibles cuando se habilite:
-
-| Comando | Función |
-|---|---|
-| `/trade <jugador>` | Invitar a un jugador conectado |
-| `/trade accept` / `/trade deny` | Aceptar o rechazar una invitación |
-| `/trade` o `/trade status` | Abrir la interfaz bilateral |
-| `/trade offer` | Ofrecer el objeto de la mano principal |
-| Clic en un objeto propio | Retirarlo de la oferta y devolverlo |
-| `/trade confirm` | Confirmar la revisión actual |
-| `/trade cancel` | Cancelar cuando todos los objetos hayan sido devueltos |
-
-Cada cambio de oferta invalida las confirmaciones anteriores. Ambos jugadores deben confirmar la misma revisión. Los objetos se guardan en escrow con marcadores PDC, huellas SHA-256 y estados durables de recuperación. **Player Value, puntos y moneda no son transferibles.**
-
-El administrador puede consultar una operación sin modificarla mediante `/hardcore trade-status <jugador>`. Las operaciones ambiguas se aíslan para revisión manual; no se entregan copias automáticamente. Aún faltan las acciones administrativas de reconciliación, expiración automática y pruebas de fallos/reinicio en staging.
+Los intercambios se gestionan mediante el plugin externo ya instalado en el servidor. SalchichonHardcore no registra ni administra un sistema propio de trades. Player Value es un sistema de prestigio no transferible y no forma parte de los intercambios.
