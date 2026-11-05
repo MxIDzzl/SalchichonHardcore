@@ -90,29 +90,33 @@ A feature is releasable only after:
 7. Documented rollback and operator runbook.
 8. CI green on the exact release commit.
 
-## 9. Current state (2026-11-03)
+## 9. Current state (2026-11-04)
 
-Implemented on `feature/postgresql-foundation`:
-- Versioned PostgreSQL schema v1-v4 with player data, audit, official-stat, stat-event, vault-item, trade-escrow, recoverable vault-operation, pending-claim, cooldown, and manual Player Value adjustment-ledger tables.
-- HikariCP pool and PostgreSQL persistence adapter.
-- SQLite persistence adapter remains available and is still the default; it has matching vault recovery tables.
-- Read-only SQLite importer with transactional target writes and count reconciliation.
-- Migration runbook and Java 25 Maven CI.
-- Shared player persistence interface.
-- Official deaths persisted transactionally with stat events; periodic monotonic playtime accumulation with flush on quit/shutdown.
-- Audited admin correction command for deaths, playtime ticks, and Player Value (`/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>`).
-- `/hardcore check <jugador>` now displays official deaths, persisted playtime, and Player Value alongside life status.
-- Shared tick-based playtime formatter with unit tests; Maven CI runs on each branch commit.
-- Backend API v1 contract and public website/admin frontend contract documented; these are specifications, not deployed services.
-- SQLite playtime updates are transactional; SQLite and PostgreSQL schemas include vault/trade persistence foundations.
+Implemented in separate draft pull requests (all remain isolated from `main`):
 
-Not implemented/release-ready yet:
-- Player Value vault operations, scoring GUI, idempotent deposit/withdrawal recovery (schema/configuration foundations only; no live vault actions).
-- Safe item escrow trade operations, inventory GUI, and crash-safe delivery reconciliation (database schema exists only).
-- Backend API, license service, web app, and admin panel.
-- End-to-end migration rehearsal, integration tests, and production cutover.
+### Paper plugin — `MxIDzzl/SalchichonHardcore`
+- Versioned PostgreSQL schema v1-v4, HikariCP adapter, SQLite adapter/default, transactional legacy importer, and migration runbook.
+- Official deaths/stat events, playtime tracking, audited administrative corrections, `/hardcore check`, and PlaceholderAPI statistics.
+- Player Value persistence foundation: strict allow-list policy, prepared deposit journal, transactional commit with BIGINT overflow protection, withdrawal claims, atomic cooldown persistence, pending/recovery separation, and startup quarantine of ambiguous operations.
+- PostgreSQL withdrawals lock the player's durable `player_data` row before checking cooldown, closing the first-withdrawal race when no cooldown row exists.
+- CI uses Java 25 and the repository's pinned Paper API.
 
-Do not enable PostgreSQL or advertise any not-implemented feature as available until its release gates pass.
+### Independent API and web — `MxIDzzl/SalchichonSMP-Updates`
+- Spring Boot API service in `api/`, with read-only public overview/player/profile/ranking/announcement endpoints, bounded pagination, CORS allow-list, health/readiness, Dockerfile, and Flyway announcement schema.
+- Runtime Hikari connections are read-only; migration credentials are separate and Flyway is disabled by default.
+- BIGINT Player Value is serialized as a decimal string; sort expressions are allow-listed and covered by tests.
+- Next.js public portal with season overview, live API statistics, player directory/profiles, rankings, announcement section, responsive styling, and explicit unavailable states rather than fabricated data.
+- Web and API have independent CI workflows and can be built/deployed as separate processes. Their draft PRs have passed CI on their current branch heads as of this update.
+
+Still not implemented/release-ready:
+- Bukkit inventory adapter, PDC item markers/fingerprints, deposit/withdrawal GUI, and inventory-aware crash reconciliation for Player Value.
+- `/trade` GUI, item escrow lifecycle, bilateral revision-bound confirmation, and crash-safe delivery.
+- Admin authentication/authorization, MFA/session hardening, audit-backed mutation endpoints, and functional admin panel.
+- SkinRestorer integration and published skin/profile visuals.
+- Plugin license/instance enrollment, revocation, and authenticated API ingestion.
+- End-to-end PostgreSQL migration rehearsal, staging integration/crash tests, deployment, and rollback rehearsal.
+
+The public web/API foundations are code, not production deployments. Keep PostgreSQL and Player Value disabled in the live server, retain SQLite backups, and do not merge draft PRs to `main` until their feature-specific release gates pass.
 
 
 ### Player Value deposit journal update — 2026-11-03
