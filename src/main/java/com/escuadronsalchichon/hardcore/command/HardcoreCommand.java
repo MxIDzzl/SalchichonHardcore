@@ -109,6 +109,39 @@ public class HardcoreCommand implements CommandExecutor {
             return true;
         }
 
+        if (subcommand.equals("trade-evidence")) {
+            if (args.length != 2) {
+                sender.sendMessage("§cUso: /hardcore trade-evidence <jugador>");
+                return true;
+            }
+            String targetName = args[1];
+            sender.sendMessage("§8Escaneando marcadores visibles del intercambio (solo lectura)...");
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                PlayerData target = databaseManager.getPlayerByName(targetName);
+                var session = target == null ? null : databaseManager.getActiveTrade(target.getUuid());
+                var items = session == null ? java.util.List.<com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord>of()
+                        : databaseManager.getTradeItems(session.tradeId());
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (target == null) {
+                        sender.sendMessage("§cNo se encontró ese jugador.");
+                        return;
+                    }
+                    if (session == null) {
+                        sender.sendMessage("§7No hay una sesión activa asociada a ese jugador.");
+                        return;
+                    }
+                    sender.sendMessage("§d§lTrade evidence — " + target.getUsername());
+                    sender.sendMessage("§7Sesión: §f" + session.tradeId() + " §8| §7Estado: §f" + session.status());
+                    var findings = new com.escuadronsalchichon.hardcore.trade.TradeEvidenceScanner(plugin)
+                            .scan(target.getUuid(), items);
+                    for (String finding : findings) sender.sendMessage("§7" + finding);
+                    sender.sendMessage("§cSolo evidencia visible: no inspecciona playerdata offline ni chunks descargados. La ausencia de marcadores no demuestra que un objeto no exista.");
+                    sender.sendMessage("§8No se modificó, retiró ni entregó ningún objeto.");
+                });
+            });
+            return true;
+        }
+
         if (subcommand.equals("trade-status")) {
             if (args.length != 2) {
                 sender.sendMessage("§cUso: /hardcore trade-status <jugador>");
@@ -282,6 +315,7 @@ public class HardcoreCommand implements CommandExecutor {
         sender.sendMessage("§e/hardcore check <jugador>");
         sender.sendMessage("§e/hardcore vault-status §7(estado interno, solo lectura)");
         sender.sendMessage("§e/hardcore trade-status <jugador> §7(escrow, solo lectura)");
+        sender.sendMessage("§e/hardcore trade-evidence <jugador> §7(marcadores visibles, solo lectura)");
         sender.sendMessage("§e/hardcore restore <jugador> <motivo>");
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
         sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
