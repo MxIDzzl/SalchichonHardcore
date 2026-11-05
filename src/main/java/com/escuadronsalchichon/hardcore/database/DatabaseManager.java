@@ -384,7 +384,7 @@ public class DatabaseManager implements PlayerDataStore {
                         item_payload BLOB NOT NULL,
                         item_fingerprint TEXT NOT NULL CHECK (length(item_fingerprint) = 64),
                         status TEXT NOT NULL CHECK (status IN (
-                            'PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING','DELIVERED',
+                            'PREPARED','ESCROWED','RETURN_PENDING','DELIVERY_PENDING','DELIVERING','DELIVERED',
                             'RETURN_PENDING','RETURNED','RECOVERY_REQUIRED'
                         )),
                         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1931,7 +1931,7 @@ public class DatabaseManager implements PlayerDataStore {
                       AND EXISTS (SELECT 1 FROM trade_item_operations o
                                   WHERE o.trade_id=trade_sessions.trade_id)
                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'ESCROWED')
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('ESCROWED','RETURNED'))
                     """)) {
                 update.setString(1, tradeId.toString());
                 update.setLong(2, expectedRevision);
@@ -2028,7 +2028,7 @@ public class DatabaseManager implements PlayerDataStore {
                     WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
                       AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('DELIVERED','RETURNED'))
                     """)) {
                 statement.setString(1, tradeId.toString());
                 if (statement.executeUpdate() != 1) { connection.rollback(); return false; }
