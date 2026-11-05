@@ -29,7 +29,7 @@ public final class TradeMenuListener implements Listener {
             }
             case 49 -> {
                 player.closeInventory();
-                trades.confirm(player);
+                trades.confirm(player, holder.session().revision());
             }
             case 53 -> {
                 if (holder.hasNext()) trades.openMenu(player, holder.page() + 1);
