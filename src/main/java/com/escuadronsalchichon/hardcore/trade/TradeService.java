@@ -242,11 +242,15 @@ public final class TradeService implements Listener {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     processingTrades.remove(tradeId);
                     if (complete) {
-                        TradeSessionRecord finished = null;
-                        for (Player online : Bukkit.getOnlinePlayers()) {
-                            if (inventoryLocks.remove(online.getUniqueId())) {
-                                online.sendMessage("§a§l¡Intercambio completado!");
-                            }
+                        Set<UUID> participants = new java.util.HashSet<>();
+                        for (TradeEscrowRecord record : items) {
+                            participants.add(record.ownerUuid());
+                            participants.add(record.recipientUuid());
+                        }
+                        for (UUID participant : participants) {
+                            inventoryLocks.remove(participant);
+                            Player online = Bukkit.getPlayer(participant);
+                            if (online != null) online.sendMessage("§a§l¡Intercambio completado!");
                         }
                         plugin.getLogger().info("Intercambio completado: " + tradeId);
                     }
@@ -255,6 +259,10 @@ public final class TradeService implements Listener {
             return;
         }
         TradeEscrowRecord item = items.get(index);
+        if ("ESCROWED".equals(item.status())) {
+            processItems(tradeId, items, index + 1);
+            return;
+        }
         if ("DELIVERED".equals(item.status())) {
             Player recipient = Bukkit.getPlayer(item.recipientUuid());
             if (recipient != null && hasOperationMarker(recipient, deliveryMarker, item.operationId())) {
@@ -356,6 +364,10 @@ public final class TradeService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!started) {
                     quarantine(tradeId, null, null, "No se pudo iniciar la entrega durable.");
+                    return;
+                }
+                if (!recipient.isOnline()) {
+                    quarantine(tradeId, null, null, "El destinatario salió antes de recibir el objeto.");
                     return;
                 }
                 var leftovers = recipient.getInventory().addItem(marked);
@@ -484,10 +496,6 @@ public final class TradeService implements Listener {
         } catch (RuntimeException exception) {
             return false;
         }
-    }
-
-    private boolean hasMarker(ItemStack item) {
-        return hasMarker(item, escrowMarker) || hasMarker(item, deliveryMarker);
     }
 
     private boolean hasMarker(ItemStack item, NamespacedKey key) {
