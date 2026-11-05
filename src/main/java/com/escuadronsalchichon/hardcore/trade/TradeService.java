@@ -365,6 +365,13 @@ public final class TradeService implements Listener {
 
     private void processItems(UUID tradeId, List<TradeEscrowRecord> items, int index) {
         if (index >= items.size()) {
+            boolean awaitingMarkerCleanup = items.stream().anyMatch(item ->
+                    ("DELIVERED".equals(item.status()) && Bukkit.getPlayer(item.recipientUuid()) == null)
+                            || ("RETURNED".equals(item.status()) && Bukkit.getPlayer(item.ownerUuid()) == null));
+            if (awaitingMarkerCleanup) {
+                processingTrades.remove(tradeId);
+                return;
+            }
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
                 boolean complete = store.completeTrade(tradeId);
                 Bukkit.getScheduler().runTask(plugin, () -> {
