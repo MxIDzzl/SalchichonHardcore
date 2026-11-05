@@ -102,19 +102,7 @@ public class SalchichonHardcore extends JavaPlugin {
                 new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
         if (Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer")) {
-            try {
-                if (net.skinsrestorer.api.VersionProvider.isCompatibleWith("15")) {
-                    var skinsRestorer = net.skinsrestorer.api.SkinsRestorerProvider.get();
-                    getServer().getPluginManager().registerEvents(
-                            new SkinRestorerSkinSync(this, databaseManager, skinsRestorer), this
-                    );
-                    getLogger().info("Integración con SkinsRestorer API major 15 activada.");
-                } else {
-                    getLogger().warning("La versión de SkinsRestorer no es compatible con la integración; sincronización de skins desactivada.");
-                }
-            } catch (IllegalStateException exception) {
-                getLogger().warning("La API de SkinsRestorer no está disponible; sincronización de skins desactivada.");
-            }
+            SkinRestorerSkinSync.registerIfAvailable(this, databaseManager);
         }
         getServer().getPluginManager().registerEvents(
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
