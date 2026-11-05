@@ -16,6 +16,9 @@ public record TradeEscrowRecord(
         Objects.requireNonNull(fingerprint);
         Objects.requireNonNull(status);
         if (ownerUuid.equals(recipientUuid)) throw new IllegalArgumentException("Escrow owner and recipient must differ.");
+        if (payload.length == 0 || payload.length > TradeEscrowItem.MAX_PAYLOAD_BYTES) {
+            throw new IllegalArgumentException("Escrow payload size is outside the supported range.");
+        }
         payload = payload.clone();
         if (!TradeEscrowItem.fingerprint(payload).equalsIgnoreCase(fingerprint)) {
             throw new IllegalArgumentException("Trade escrow fingerprint mismatch.");
