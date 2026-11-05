@@ -1875,18 +1875,30 @@ public class DatabaseManager implements PlayerDataStore {
     @Override
     public synchronized boolean completeTrade(UUID tradeId) {
         if (!isConnected() || tradeId == null) return false;
-        try (var statement = connection.prepareStatement("""
-                UPDATE trade_sessions SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP
-                WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
-                  AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
-                  AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                  WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
-                """)) {
-            statement.setString(1, tradeId.toString());
-            return statement.executeUpdate() == 1;
+        try {
+            connection.setAutoCommit(false);
+            try (var statement = connection.prepareStatement("""
+                    UPDATE trade_sessions SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
+                      AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
+                      AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
+                    """)) {
+                statement.setString(1, tradeId.toString());
+                if (statement.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (var release = connection.prepareStatement("DELETE FROM trade_player_locks WHERE trade_id=?")) {
+                release.setString(1, tradeId.toString());
+                release.executeUpdate();
+            }
+            connection.commit();
+            return true;
         } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
             plugin.getLogger().severe("No se pudo finalizar el intercambio.");
             return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
     }
 
