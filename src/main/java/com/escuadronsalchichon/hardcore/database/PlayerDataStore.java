@@ -72,6 +72,8 @@ public interface PlayerDataStore {
 
     java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid);
 
+    boolean updatePlayerSkin(UUID uuid, String textureHash);
+
     VaultRecoverySummary getVaultRecoverySummary();
 
     int flagUncertainVaultOperations();
