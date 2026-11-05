@@ -477,7 +477,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                     try (ResultSet row = query.executeQuery()) {
                         if (!row.next()) { connection.rollback(); return false; }
                         if ("COMMITTED".equals(row.getString("status"))) { connection.commit(); return true; }
-                        if (!"PREPARED".equals(row.getString("status"))) { connection.rollback(); return false; }
+                        if (!"PREPARED".equals(row.getString("status")) && !"RECOVERY_REQUIRED".equals(row.getString("status"))) { connection.rollback(); return false; }
                         material=row.getString("material"); amount=row.getInt("amount"); payload=row.getBytes("item_payload");
                         value=row.getLong("credited_value"); created=row.getObject("created_at", OffsetDateTime.class);
                     }
@@ -501,7 +501,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE vault_operations SET status='COMMITTED',updated_at=now()
-                        WHERE operation_id=? AND player_uuid=? AND status='PREPARED'
+                        WHERE operation_id=? AND player_uuid=? AND status IN ('PREPARED','RECOVERY_REQUIRED')
                         """)) {
                     update.setObject(1, operationId); update.setObject(2, uuid);
                     if (update.executeUpdate()!=1) throw new SQLException("La operación dejó de estar PREPARED.");
@@ -515,6 +515,54 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
+
+    @Override
+    public java.util.List<VaultItemRecord> getUncertainVaultDeposits(UUID uuid) {
+        if (!isConnected() || uuid == null) return null;
+        java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("""
+                     SELECT operation_id,material,amount,item_payload,credited_value,created_at
+                     FROM vault_operations
+                     WHERE player_uuid=? AND operation_type='DEPOSIT'
+                       AND status IN ('PREPARED','RECOVERY_REQUIRED')
+                     ORDER BY created_at,operation_id
+                     """)) {
+            query.setObject(1, uuid);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) {
+                    OffsetDateTime created = rows.getObject("created_at", OffsetDateTime.class);
+                    items.add(new VaultItemRecord(rows.getObject("operation_id", UUID.class), uuid,
+                            rows.getString("material"), rows.getInt("amount"), rows.getBytes("item_payload"),
+                            rows.getLong("credited_value"), created.toInstant()));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | RuntimeException exception) {
+            plugin.getLogger().severe("No se pudieron consultar depósitos Player Value en recuperación.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean abortVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement update = connection.prepareStatement("""
+                     UPDATE vault_operations SET status='ABORTED',updated_at=now()
+                     WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
+                       AND status IN ('PREPARED','RECOVERY_REQUIRED')
+                     """)) {
+            update.setObject(1, operationId);
+            update.setObject(2, uuid);
+            return update.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo abortar el depósito recuperado.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
 
     @Override
     public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
