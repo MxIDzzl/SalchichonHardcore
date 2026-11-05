@@ -250,14 +250,6 @@ public class DatabaseManager implements PlayerDataStore {
                     )
                     """);
             statement.executeUpdate("""
-                    CREATE TABLE IF NOT EXISTS player_skins (
-                        player_uuid TEXT PRIMARY KEY,
-                        texture_hash TEXT NOT NULL CHECK (length(texture_hash) BETWEEN 32 AND 64),
-                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid) ON DELETE CASCADE
-                    )
-                    """);
-            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS player_value_adjustments (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         player_uuid TEXT NOT NULL,
