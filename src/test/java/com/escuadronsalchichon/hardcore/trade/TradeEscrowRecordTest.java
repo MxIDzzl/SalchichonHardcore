@@ -22,6 +22,15 @@ class TradeEscrowRecordTest {
     }
 
     @Test
+    void rejectsSelfTransfer() {
+        UUID player = UUID.randomUUID();
+        byte[] payload = {1};
+        assertThrows(IllegalArgumentException.class, () -> new TradeEscrowRecord(
+                UUID.randomUUID(), UUID.randomUUID(), player, player,
+                payload, TradeEscrowItem.fingerprint(payload), "ESCROWED"));
+    }
+
+    @Test
     void rejectsFingerprintMismatch() {
         byte[] payload = {1};
         assertThrows(IllegalArgumentException.class, () -> new TradeEscrowRecord(
