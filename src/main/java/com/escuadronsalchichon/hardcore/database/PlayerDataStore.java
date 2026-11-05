@@ -1,6 +1,7 @@
 package com.escuadronsalchichon.hardcore.database;
 
 import com.escuadronsalchichon.hardcore.player.PlayerData;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
 
 import java.time.LocalDate;
 import java.util.UUID;
