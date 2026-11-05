@@ -143,8 +143,9 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
         player.sendMessage("§f/trade deny §7Rechazar una invitación");
         player.sendMessage("§f/trade offer §7Ofrecer el objeto de tu mano");
         player.sendMessage("§f/trade confirm §7Confirmar la oferta actual");
-        player.sendMessage("§f/trade status §7Consultar el intercambio");
-        player.sendMessage("§f/trade cancel §7Cancelar antes de ofrecer objetos");
+        player.sendMessage("§f/trade status §7Abrir la interfaz de intercambio");
+        player.sendMessage("§f/trade cancel §7Cancelar cuando todas las ofertas hayan sido devueltas");
+        player.sendMessage("§7Clic en tus propios objetos de la GUI para retirarlos de la oferta.");
         player.sendMessage("§8Solo se intercambian objetos; Player Value no es transferible.");
     }
 
