@@ -98,6 +98,19 @@ public final class TradeService implements Listener {
             return;
         }
         ItemStack payloadItem = original.clone();
+        byte[] payloadBytes;
+        try {
+            payloadBytes = payloadItem.serializeAsBytes();
+        } catch (RuntimeException invalid) {
+            inventoryLocks.remove(playerId);
+            player.sendMessage("§cNo se pudo serializar ese objeto para el intercambio.");
+            return;
+        }
+        if (payloadBytes.length == 0 || payloadBytes.length > TradeEscrowItem.MAX_PAYLOAD_BYTES) {
+            inventoryLocks.remove(playerId);
+            player.sendMessage("§cEse objeto excede el tamaño máximo admitido para un intercambio.");
+            return;
+        }
         player.sendMessage("§8Preparando objeto para escrow...");
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             TradeSessionRecord session = store.getActiveTrade(playerId);
@@ -122,8 +135,8 @@ public final class TradeService implements Listener {
             UUID operationId = UUID.randomUUID();
             UUID recipient = session.other(playerId);
             TradeEscrowItem record = new TradeEscrowItem(operationId, session.tradeId(),
-                    playerId, recipient, payloadItem.serializeAsBytes(),
-                    TradeEscrowItem.fingerprint(payloadItem.serializeAsBytes()));
+                    playerId, recipient, payloadBytes,
+                    TradeEscrowItem.fingerprint(payloadBytes));
             boolean prepared = store.prepareTradeEscrowItem(record);
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) {
