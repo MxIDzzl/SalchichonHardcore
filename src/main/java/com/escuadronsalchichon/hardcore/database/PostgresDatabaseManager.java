@@ -1147,6 +1147,16 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                 boolean validPair = (item.ownerUuid().equals(playerA) && item.recipientUuid().equals(playerB))
                         || (item.ownerUuid().equals(playerB) && item.recipientUuid().equals(playerA));
                 if (!validPair) { connection.rollback(); return false; }
+                try (PreparedStatement pending = connection.prepareStatement("""
+                        SELECT 1 FROM trade_item_operations
+                        WHERE trade_id=? AND status IN ('PREPARED','RETURN_PENDING','RECOVERY_REQUIRED')
+                        LIMIT 1
+                        """)) {
+                    pending.setObject(1, item.tradeId());
+                    try (ResultSet result = pending.executeQuery()) {
+                        if (result.next()) { connection.rollback(); return false; }
+                    }
+                }
                 try (PreparedStatement insert = connection.prepareStatement("""
                         INSERT INTO trade_item_operations(operation_id,trade_id,owner_uuid,recipient_uuid,
                             item_payload,item_fingerprint,status)
