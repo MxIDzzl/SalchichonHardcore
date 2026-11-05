@@ -44,6 +44,10 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
         switch (action) {
             case "accept" -> accept(player);
             case "deny" -> deny(player);
+            case "cancel" -> {
+                if (args.length != 1) player.sendMessage("§cUso: /trade cancel");
+                else trades.cancel(player);
+            }
             case "offer" -> {
                 if (args.length != 1) player.sendMessage("§cUso: /trade offer");
                 else trades.offer(player);
@@ -115,6 +119,7 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
         player.sendMessage("§f/trade offer §7Ofrecer el objeto de tu mano");
         player.sendMessage("§f/trade confirm §7Confirmar la oferta actual");
         player.sendMessage("§f/trade status §7Consultar el intercambio");
+        player.sendMessage("§f/trade cancel §7Cancelar antes de ofrecer objetos");
         player.sendMessage("§8Solo se intercambian objetos; Player Value no es transferible.");
     }
 
@@ -122,7 +127,7 @@ public final class TradeCommand implements CommandExecutor, TabCompleter {
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
         if (args.length == 1) {
             String prefix = args[0].toLowerCase(Locale.ROOT);
-            List<String> options = new ArrayList<>(List.of("accept", "deny", "offer", "confirm", "status"));
+            List<String> options = new ArrayList<>(List.of("accept", "deny", "offer", "confirm", "status", "cancel"));
             for (Player online : Bukkit.getOnlinePlayers()) {
                 if (sender instanceof Player self && online.getUniqueId().equals(self.getUniqueId())) continue;
                 options.add(online.getName());
