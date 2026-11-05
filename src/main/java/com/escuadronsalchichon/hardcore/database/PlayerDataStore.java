@@ -56,7 +56,10 @@ public interface PlayerDataStore {
     boolean commitVaultDeposit(UUID uuid, UUID operationId);
 
     /** Returns deposits quarantined after an interrupted inventory transaction. */
-    java.util.List<VaultItemRecord> getUncertainVaultDeposits(UUID uuid);
+    java.util.List<VaultDepositRecoveryRecord> getUncertainVaultDeposits(UUID uuid);
+
+    /** Records that the marked stack was removed and player data saved durably. */
+    boolean markVaultDepositInventoryRemoved(UUID uuid, UUID operationId);
 
     /** Aborts a quarantined deposit only after inventory recovery proves its marker remains. */
     boolean abortVaultDeposit(UUID uuid, UUID operationId);
