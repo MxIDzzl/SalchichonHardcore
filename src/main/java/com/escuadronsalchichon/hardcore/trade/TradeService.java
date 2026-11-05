@@ -658,6 +658,22 @@ public final class TradeService implements Listener {
         return false;
     }
 
+    private boolean hasExpectedMarker(Player player, List<TradeEscrowRecord> items) {
+        UUID playerId = player.getUniqueId();
+        for (TradeEscrowRecord item : items) {
+            if (item.ownerUuid().equals(playerId) && "PREPARED".equals(item.status())) {
+                ItemStack marked = findOperationMarkedStack(player, escrowMarker, item.operationId());
+                if (marked != null && matchesPayload(marked, item.payload(), escrowMarker)) return true;
+            }
+            if (item.recipientUuid().equals(playerId)
+                    && ("DELIVERING".equals(item.status()) || "DELIVERED".equals(item.status()))) {
+                ItemStack marked = findOperationMarkedStack(player, deliveryMarker, item.operationId());
+                if (marked != null && matchesPayload(marked, item.payload(), deliveryMarker)) return true;
+            }
+        }
+        return false;
+    }
+
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
@@ -683,6 +699,11 @@ public final class TradeService implements Listener {
                     inventoryLocks.add(session.playerA());
                     inventoryLocks.add(session.playerB());
                     player.sendMessage("§cTienes un intercambio aislado para revisión manual. No muevas objetos marcados.");
+                    return;
+                }
+                if (markerPresentAtJoin && !hasExpectedMarker(player, items)) {
+                    quarantine(session.tradeId(), session.playerA(), session.playerB(),
+                            "Se encontró un marcador que no coincide con una operación no terminal.");
                     return;
                 }
                 for (TradeEscrowRecord item : items) {
