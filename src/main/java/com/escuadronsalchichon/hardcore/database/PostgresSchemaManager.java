@@ -21,7 +21,7 @@ import java.util.List;
  */
 public final class PostgresSchemaManager {
 
-    private static final int CURRENT_SCHEMA_VERSION = 5;
+    private static final int CURRENT_SCHEMA_VERSION = 6;
 
     private final JavaPlugin plugin;
     private final PostgresConnectionPool postgres;
@@ -67,6 +67,11 @@ public final class PostgresSchemaManager {
                 if (installedVersion < 5) {
                     applyStatements(connection, loadStatements("/db/postgresql/schema-v5.sql"));
                     recordVersion(connection, 5);
+                    installedVersion = 5;
+                }
+                if (installedVersion < 6) {
+                    applyStatements(connection, loadStatements("/db/postgresql/schema-v6.sql"));
+                    recordVersion(connection, 6);
                 }
 
                 validateRequiredTables(connection);
@@ -172,6 +177,7 @@ public final class PostgresSchemaManager {
                 "player_value_items",
                 "trade_sessions",
                 "trade_escrow_items",
+                "trade_item_operations",
                 "operation_receipts",
                 "vault_operations",
                 "vault_claims",
