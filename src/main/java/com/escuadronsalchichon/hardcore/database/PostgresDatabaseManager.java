@@ -1327,7 +1327,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                           AND EXISTS (SELECT 1 FROM trade_item_operations o
                                       WHERE o.trade_id=trade_sessions.trade_id)
                           AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'ESCROWED')
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('ESCROWED','RETURNED'))
                         """)) {
                     update.setObject(1, tradeId);
                     update.setLong(2, expectedRevision);
@@ -1436,7 +1436,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                         WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
                           AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
                           AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('DELIVERED','RETURNED'))
                         """)) {
                     statement.setObject(1, tradeId);
                     if (statement.executeUpdate() != 1) { connection.rollback(); return false; }
