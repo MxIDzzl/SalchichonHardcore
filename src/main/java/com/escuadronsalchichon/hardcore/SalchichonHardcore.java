@@ -20,6 +20,7 @@ import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
 import com.escuadronsalchichon.hardcore.vault.VaultWithdrawalService;
 import com.escuadronsalchichon.hardcore.trade.TradeCommand;
 import com.escuadronsalchichon.hardcore.trade.TradeService;
+import com.escuadronsalchichon.hardcore.trade.TradeMenuListener;
 import com.escuadronsalchichon.hardcore.vault.VaultInventoryService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
