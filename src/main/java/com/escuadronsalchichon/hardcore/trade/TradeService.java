@@ -249,22 +249,42 @@ public final class TradeService implements Listener {
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             TradeSessionRecord session = store.getActiveTrade(playerId);
             List<TradeEscrowRecord> items = session == null ? List.of() : store.getTradeItems(session.tradeId());
-            boolean allReturned = items.stream().allMatch(item -> "RETURNED".equals(item.status()));
-            boolean cancelled = session != null && session.status() == TradeStatus.OPEN
-                    && !processingTrades.contains(session.tradeId())
-                    && allReturned && store.cancelEmptyTrade(session.tradeId(), playerId);
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
-                if (!cancelled) {
-                    player.sendMessage("§cSolo puedes cancelar un intercambio abierto cuando todos los objetos ofrecidos ya fueron devueltos.");
+                boolean allReturned = items.stream().allMatch(item -> "RETURNED".equals(item.status()));
+                if (session == null || session.status() != TradeStatus.OPEN
+                        || processingTrades.contains(session.tradeId()) || !allReturned) {
+                    player.sendMessage("§cSolo puedes cancelar cuando todos los objetos ofrecidos hayan sido devueltos.");
                     return;
                 }
-                tradeParticipants.remove(session.tradeId());
-                inventoryLocks.remove(session.playerA());
-                inventoryLocks.remove(session.playerB());
-                player.sendMessage("§7Intercambio cancelado.");
-                Player other = Bukkit.getPlayer(session.other(playerId));
-                if (other != null) other.sendMessage("§7El intercambio fue cancelado.");
+                for (TradeEscrowRecord item : items) {
+                    Player owner = Bukkit.getPlayer(item.ownerUuid());
+                    if (owner == null) {
+                        player.sendMessage("§eLa otra persona debe conectarse para verificar la devolución antes de cancelar.");
+                        return;
+                    }
+                    if (hasOperationMarker(owner, deliveryMarker, item.operationId())) {
+                        player.sendMessage("§eTodavía se está limpiando un marcador de devolución. Abre /trade status en un momento.");
+                        resumeTrade(session.tradeId());
+                        return;
+                    }
+                }
+                Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+                    boolean cancelled = store.cancelEmptyTrade(session.tradeId(), playerId);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (!player.isOnline()) return;
+                        if (!cancelled) {
+                            player.sendMessage("§cNo se pudo cancelar el intercambio. Vuelve a consultar su estado.");
+                            return;
+                        }
+                        tradeParticipants.remove(session.tradeId());
+                        inventoryLocks.remove(session.playerA());
+                        inventoryLocks.remove(session.playerB());
+                        player.sendMessage("§7Intercambio cancelado.");
+                        Player other = Bukkit.getPlayer(session.other(playerId));
+                        if (other != null) other.sendMessage("§7El intercambio fue cancelado.");
+                    });
+                });
             });
         });
     }
