@@ -364,6 +364,7 @@ public final class TradeService implements Listener {
                     quarantine(tradeId, null, null, "La devolución confirmada no coincide con su payload.");
                     return;
                 }
+                inventoryLocks.remove(owner.getUniqueId());
             }
             processItems(tradeId, items, index + 1);
             return;
