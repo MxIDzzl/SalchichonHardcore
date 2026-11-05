@@ -1373,6 +1373,30 @@ public class DatabaseManager implements PlayerDataStore {
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
 
+
+    @Override
+    public synchronized VaultRecoverySummary getVaultRecoverySummary() {
+        if (!isConnected()) return null;
+        String sql = """
+                SELECT
+                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='PREPARED' THEN 1 ELSE 0 END),0),
+                    COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='DELIVERY_PENDING' THEN 1 ELSE 0 END),0),
+                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END),0),
+                    COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END),0)
+                FROM vault_operations
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            if (!result.next()) return null;
+            return new VaultRecoverySummary(result.getInt(1), result.getInt(2),
+                    result.getInt(3), result.getInt(4));
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar el estado de recuperación de Player Value.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
     @Override
     public synchronized int flagUncertainVaultOperations() {
         if (!isConnected()) return 0;
