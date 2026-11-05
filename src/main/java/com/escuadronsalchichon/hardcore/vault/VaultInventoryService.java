@@ -196,10 +196,10 @@ public final class VaultInventoryService implements Listener {
         VaultDepositRecoveryRecord recovery = pending.get(index);
         VaultItemRecord operation = recovery.item();
         boolean markerPresent = findMarkedItem(player, operation.itemId()) != null;
-        boolean safeAbort = markerPresent && (recovery.status().equals("PREPARED")
-                || recovery.status().equals("RECOVERY_REQUIRED"));
-        boolean safeCommit = !markerPresent && recovery.status().equals("DELIVERY_PENDING");
-        if (!safeAbort && !safeCommit) {
+        var recoveryAction = recovery.actionFor(markerPresent);
+        boolean safeAbort = recoveryAction == VaultDepositRecoveryRecord.RecoveryAction.CANCEL_AND_KEEP_ITEM;
+        boolean safeCommit = recoveryAction == VaultDepositRecoveryRecord.RecoveryAction.COMMIT_REMOVAL;
+        if (recoveryAction == VaultDepositRecoveryRecord.RecoveryAction.MANUAL_REVIEW) {
             if (markerPresent) lockedPlayers.add(uuid);
             else lockedPlayers.remove(uuid);
             player.sendMessage("§cUna operación Player Value no tiene evidencia suficiente para resolverse automáticamente. No se volverá a acreditar ni a cancelar sin revisión.");
