@@ -72,5 +72,7 @@ public interface PlayerDataStore {
 
     java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid);
 
+    VaultRecoverySummary getVaultRecoverySummary();
+
     int flagUncertainVaultOperations();
 }
