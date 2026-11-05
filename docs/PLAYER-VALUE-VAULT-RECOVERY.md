@@ -151,7 +151,7 @@ The plugin now has a first inventory-backed deposit path and a read-only paginat
 - `/value [page]` opens a 45-item-per-page vault view. Menu interactions are owner-bound and all click/drag transfers are cancelled. Database reads run asynchronously; inventory construction happens on the server thread.
 - `/value deposit` accepts only the configured plain-item allow-list from the main hand. It serializes the original item before adding a plugin-owned PDC operation marker.
 - The marker is saved to player data before the durable `DEPOSIT/PREPARED` row is written. Only after the journal write succeeds is the marked stack removed and player data saved again; the aggregate score and vault row are then committed transactionally.
-- On join, the player inventory is locked while uncertain deposits are read and reconciled. If the exact operation marker remains, the journal is cancelled and the item is kept. If the marker is absent, the saved inventory mutation is treated as completed and the durable deposit is committed. Unknown orphan markers are stripped only after the pending journal set has been resolved.
+- On join, the player inventory is locked while uncertain deposits are read and reconciled. If the exact operation marker remains, the journal is cancelled and the item is kept. If the marker is absent, the saved inventory mutation is treated as completed and the durable deposit is committed. Unknown orphan markers are quarantined and never stripped automatically; only a matching, verified terminal operation may release the marker.
 - An ambiguous response from the PREPARED write is not treated as a definite failure: the service queries the durable journal and reconciles before releasing the inventory lock.
 - The inventory lock blocks click/drag, drop, swap, interaction, and item pickup during deposit/recovery. Disconnects release only the in-memory lock; the PDC marker and database journal survive for the next join.
 
@@ -192,3 +192,6 @@ The plugin now exposes withdrawal through clicking a stored item in the `/value`
 The SQLite and PostgreSQL adapters now allow an atomic acknowledgement from `DELIVERING` or `RECOVERY_REQUIRED`, but only when both the claim and operation rows are in compatible states. Added unit coverage for the claim recovery decision matrix.
 
 **Release gate remains:** `player-value.enabled: false`. The feature still needs crash-injection integration tests against both database engines, staging validation, backup/restore verification, and a review of the server's actual Paper build before live activation. Manual-review claims must not be cleared by operators without checking the player's inventory and durable journal together.
+### Orphan marker handling — 2026-11-05
+
+An inventory marker with no matching nonterminal journal row is not automatically removed. Deposit and withdrawal services now quarantine the Player Value workflow, and lock the inventory when a marked stack is present. This avoids treating a contradictory database/inventory snapshot as harmless cleanup. A staff member must reconcile the marker against the durable operation and the player's saved inventory before manually resolving it.
