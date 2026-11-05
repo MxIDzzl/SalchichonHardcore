@@ -64,6 +64,10 @@ public final class VaultInventoryService implements Listener {
         return lockedPlayers.contains(playerUuid);
     }
 
+    public boolean isRecoveryPending(UUID playerUuid) {
+        return recoveryPlayers.contains(playerUuid);
+    }
+
     public boolean beginExternalOperation(UUID playerUuid) {
         return playerUuid != null && !recoveryPlayers.contains(playerUuid) && lockedPlayers.add(playerUuid);
     }
