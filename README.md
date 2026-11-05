@@ -92,6 +92,6 @@ El historial público de cambios, novedades y versiones del servidor se mantiene
 
 ## Player Value viewer
 
-The `/value [page]` command and paginated 54-slot inventory viewer are implemented as a read-only surface over the durable vault records. It shows stored item summaries and the current Player Value total. The menu cancels click/drag movement and binds interactions to the owning player; database reads run asynchronously and inventory rendering returns to the server thread.
+The `/value [page]` command opens a paginated inventory viewer over durable vault records. `/value deposit` supports allow-listed plain items from the main hand. It persists a PDC operation marker and PREPARED journal before removing the stack, then commits the item and aggregate score transactionally. On join, uncertain deposits are reconciled by checking the exact marker: present means cancel and keep the item; absent means commit the deposit. Inventory actions are locked while a deposit/recovery is in progress.
 
-The feature remains disabled by default in `config.yml`. Deposits, withdrawals, inventory markers, and crash-safe reconciliation are intentionally not exposed yet; enabling the viewer alone would not make those operations safe.
+The feature remains disabled by default in `config.yml`. Withdrawals still lack the matching PDC delivery/reconciliation workflow, and full crash-injection integration tests against SQLite and PostgreSQL are still required. Do not enable Player Value on the live server yet.
