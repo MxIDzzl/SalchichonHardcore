@@ -72,7 +72,7 @@ The shared persistence contract now includes `flagUncertainVaultClaims()`. On pl
 3. The number of quarantined claims is logged.
 4. If the recovery sweep fails, plugin startup is aborted rather than allowing uncertain claims to be processed.
 
-The sweep is transactional in both SQLite and PostgreSQL. It does not issue inventory items, infer whether an item reached a player's inventory, or automatically replay a claim. Manual reconciliation and a PDC-backed inventory evidence workflow are still required before withdrawals can be enabled.
+The sweep is transactional in both SQLite and PostgreSQL. It does not issue inventory items, infer whether an item reached a player's inventory, or automatically replay a claim. The PDC-backed workflow now acknowledges only exact marked inventory evidence; claims without that evidence remain quarantined for manual reconciliation.
 
 ## Atomic withdrawal finalization
 
