@@ -124,18 +124,14 @@ public final class VaultWithdrawalService implements Listener {
         }
         VaultClaimRecord claim = claims.get(index);
         int marked = markedAmount(player, claim.claimId());
-        if (claim.status().equals("PENDING")) {
-            if (marked != 0) {
-                inventoryLocks.quarantineExternalOperation(uuid);
-                player.sendMessage("§cUna reclamación pendiente tiene un marcador inesperado. Requiere revisión manual.");
-                return;
-            }
+        var action = claim.actionFor(marked);
+        if (action == VaultClaimRecord.RecoveryAction.DELIVER_PENDING) {
             deliverPending(player, claim, () -> recoverNext(player, claims, index + 1));
             return;
         }
-        if (marked != claim.amount()) {
+        if (action == VaultClaimRecord.RecoveryAction.MANUAL_REVIEW) {
             inventoryLocks.quarantineExternalOperation(uuid);
-            if (marked > 0) player.sendMessage("§cEl objeto de un retiro interrumpido está incompleto. No lo muevas; requiere revisión.");
+            if (marked > 0) player.sendMessage("§cEl objeto de un retiro interrumpido está incompleto o tiene un estado contradictorio. No lo muevas; requiere revisión manual.");
             else player.sendMessage("§cUn retiro interrumpido no tiene evidencia de entrega. No se volverá a generar automáticamente.");
             plugin.getLogger().warning("Retiro requiere revisión manual: " + claim.claimId() + " (" + claim.status() + ").");
             return;
