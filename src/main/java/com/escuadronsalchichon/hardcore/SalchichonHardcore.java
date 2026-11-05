@@ -8,6 +8,7 @@ import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerJoinListener;
+import com.escuadronsalchichon.hardcore.listener.SkinRestorerSkinSync;
 import com.escuadronsalchichon.hardcore.listener.TotemListener;
 import com.escuadronsalchichon.hardcore.listener.WorldLoadListener;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
@@ -100,6 +101,21 @@ public class SalchichonHardcore extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
+        if (Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer")) {
+            try {
+                if (net.skinsrestorer.api.VersionProvider.isCompatibleWith("15")) {
+                    var skinsRestorer = net.skinsrestorer.api.SkinsRestorerProvider.get();
+                    getServer().getPluginManager().registerEvents(
+                            new SkinRestorerSkinSync(this, databaseManager, skinsRestorer), this
+                    );
+                    getLogger().info("Integración con SkinsRestorer API major 15 activada.");
+                } else {
+                    getLogger().warning("La versión de SkinsRestorer no es compatible con la integración; sincronización de skins desactivada.");
+                }
+            } catch (IllegalStateException exception) {
+                getLogger().warning("La API de SkinsRestorer no está disponible; sincronización de skins desactivada.");
+            }
+        }
         getServer().getPluginManager().registerEvents(
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
         );
