@@ -70,6 +70,7 @@ public final class TradeMenu {
             lore.add(Component.text(" "));
             lore.add(Component.text(sideName));
             lore.add(Component.text("Estado: " + record.status()));
+            lore.add(Component.text("Clic para retirar si es tu objeto"));
             meta.lore(lore);
             icon.setItemMeta(meta);
             inventory.setItem(offset + i, icon);
