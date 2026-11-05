@@ -65,7 +65,7 @@ public class HardcoreCommand implements CommandExecutor {
                 return true;
             }
             sender.sendMessage("§d§lPlayer Value — estado de operaciones");
-            sender.sendMessage("§7Depósitos PREPARED: §f" + summary.preparedDeposits());
+            sender.sendMessage("§7Depósitos pendientes: §f" + summary.preparedDeposits());
             sender.sendMessage("§7Retiros DELIVERY_PENDING: §f" + summary.pendingWithdrawals());
             sender.sendMessage("§7Depósitos RECOVERY_REQUIRED: §c" + summary.recoveryRequiredDeposits());
             sender.sendMessage("§7Retiros RECOVERY_REQUIRED: §c" + summary.recoveryRequiredWithdrawals());
