@@ -56,3 +56,7 @@ bossbar:
   unavailable:
     text: "&cSIN VIDAS"
     color: RED
+
+# Intercambios de objetos; Player Value no se puede transferir.
+trade:
+  enabled: true
