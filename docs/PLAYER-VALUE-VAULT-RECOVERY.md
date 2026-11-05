@@ -61,7 +61,7 @@ The claim marker must be a plugin-owned PDC key and must never be copied from us
 
 ## Current status
 
-The schema, SQLite/PostgreSQL journal adapters, paginated read-only inventory viewer, marked deposit path, and evidence-based join recovery are implemented. Withdrawal delivery/recovery and the full crash-injection integration suite are still outstanding. `player-value.enabled` must remain `false`.
+The schema, SQLite/PostgreSQL journal adapters, paginated read-only inventory viewer, marked deposit path, and evidence-based join recovery are implemented. Withdrawal delivery/recovery is implemented; crash-injection integration tests, staging, and backup/restore validation are still outstanding. `player-value.enabled` must remain `false`.
 
 ## Startup quarantine implemented
 
