@@ -8,7 +8,6 @@ import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerJoinListener;
-import com.escuadronsalchichon.hardcore.listener.SkinRestorerSkinSync;
 import com.escuadronsalchichon.hardcore.listener.TotemListener;
 import com.escuadronsalchichon.hardcore.listener.WorldLoadListener;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
@@ -102,7 +101,15 @@ public class SalchichonHardcore extends JavaPlugin {
                 new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
         if (Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer")) {
-            SkinRestorerSkinSync.registerIfAvailable(this, databaseManager);
+            try {
+                Class<?> bridge = Class.forName(
+                        "com.escuadronsalchichon.hardcore.listener.SkinRestorerSkinSync"
+                );
+                bridge.getMethod("registerIfAvailable", JavaPlugin.class, PlayerDataStore.class)
+                        .invoke(null, this, databaseManager);
+            } catch (ReflectiveOperationException | LinkageError exception) {
+                getLogger().warning("No se pudo cargar la integración opcional de SkinsRestorer; el plugin continuará sin sincronizar skins.");
+            }
         }
         getServer().getPluginManager().registerEvents(
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
