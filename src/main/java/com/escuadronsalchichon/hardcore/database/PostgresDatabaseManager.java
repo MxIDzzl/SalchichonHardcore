@@ -832,8 +832,18 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
 
     @Override
     public boolean updatePlayerSkin(UUID uuid, String textureHash) {
-        if (!isConnected() || uuid == null || textureHash == null
-                || !textureHash.matches("(?i)[0-9a-f]{32,64}")) return false;
+        if (!isConnected() || uuid == null) return false;
+        if (textureHash == null) {
+            try (Connection connection = pool.getConnection();
+                 PreparedStatement delete = connection.prepareStatement("DELETE FROM player_skins WHERE player_uuid=?")) {
+                delete.setObject(1, uuid);
+                return delete.executeUpdate() >= 0;
+            } catch (SQLException exception) {
+                plugin.getLogger().warning("No se pudo limpiar la skin registrada para " + uuid + ".");
+                return false;
+            }
+        }
+        if (!textureHash.matches("(?i)[0-9a-f]{32,64}")) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO player_skins(player_uuid,texture_hash,updated_at)
