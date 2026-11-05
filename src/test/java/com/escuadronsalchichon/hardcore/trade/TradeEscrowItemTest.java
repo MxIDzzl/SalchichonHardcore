@@ -24,6 +24,14 @@ class TradeEscrowItemTest {
     }
 
     @Test
+    void rejectsPayloadLargerThanOneMiB() {
+        byte[] oversized = new byte[TradeEscrowItem.MAX_PAYLOAD_BYTES + 1];
+        assertThrows(IllegalArgumentException.class, () -> new TradeEscrowItem(
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+                oversized, TradeEscrowItem.fingerprint(oversized)));
+    }
+
+    @Test
     void rejectsSelfTransferEmptyPayloadAndFingerprintMismatch() {
         UUID player = UUID.randomUUID();
         assertThrows(IllegalArgumentException.class, () -> new TradeEscrowItem(
