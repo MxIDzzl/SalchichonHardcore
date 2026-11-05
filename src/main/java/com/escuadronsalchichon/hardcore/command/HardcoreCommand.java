@@ -54,6 +54,25 @@ public class HardcoreCommand implements CommandExecutor {
 
         String subcommand = args[0].toLowerCase(Locale.ROOT);
 
+        if (subcommand.equals("vault-status")) {
+            if (args.length != 1) {
+                sender.sendMessage("§cUso: /hardcore vault-status");
+                return true;
+            }
+            var summary = databaseManager.getVaultRecoverySummary();
+            if (summary == null) {
+                sender.sendMessage("§cNo se pudo consultar el estado del almacén Player Value.");
+                return true;
+            }
+            sender.sendMessage("§d§lPlayer Value — estado de operaciones");
+            sender.sendMessage("§7Depósitos PREPARED: §f" + summary.preparedDeposits());
+            sender.sendMessage("§7Retiros DELIVERY_PENDING: §f" + summary.pendingWithdrawals());
+            sender.sendMessage("§7Depósitos RECOVERY_REQUIRED: §c" + summary.recoveryRequiredDeposits());
+            sender.sendMessage("§7Retiros RECOVERY_REQUIRED: §c" + summary.recoveryRequiredWithdrawals());
+            sender.sendMessage("§8Consulta de solo lectura; no modifica ni entrega objetos.");
+            return true;
+        }
+
         if (subcommand.equals("reload")) {
             plugin.reloadPluginConfiguration();
             sender.sendMessage("§aConfiguración de SalchichonHardcore recargada.");
@@ -221,6 +240,7 @@ public class HardcoreCommand implements CommandExecutor {
     private void sendUsage(CommandSender sender) {
         sender.sendMessage("§6§lSalchichonHardcore");
         sender.sendMessage("§e/hardcore check <jugador>");
+        sender.sendMessage("§e/hardcore vault-status §7(estado interno, solo lectura)");
         sender.sendMessage("§e/hardcore restore <jugador> <motivo>");
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
         sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
