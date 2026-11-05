@@ -1967,5 +1967,36 @@ public class DatabaseManager implements PlayerDataStore {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
     }
+ 
+    @Override
+    public synchronized boolean cancelEmptyTrade(UUID tradeId, UUID actor) {
+        if (!isConnected() || tradeId == null || actor == null) return false;
+        try {
+            connection.setAutoCommit(false);
+            try (var update = connection.prepareStatement("""
+                    UPDATE trade_sessions SET status='CANCELLED',updated_at=CURRENT_TIMESTAMP
+                    WHERE trade_id=? AND status='OPEN' AND (player_a=? OR player_b=?)
+                      AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=trade_sessions.trade_id)
+                    """)) {
+                update.setString(1, tradeId.toString());
+                update.setString(2, actor.toString());
+                update.setString(3, actor.toString());
+                if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+            }
+            try (var release = connection.prepareStatement("DELETE FROM trade_player_locks WHERE trade_id=?")) {
+                release.setString(1, tradeId.toString());
+                release.executeUpdate();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
+        }
+    }
+
 
 }
