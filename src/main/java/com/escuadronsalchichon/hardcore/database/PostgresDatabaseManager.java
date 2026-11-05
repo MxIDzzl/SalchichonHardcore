@@ -1331,14 +1331,14 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
             try {
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=now()
-                        WHERE trade_id=? AND status='LOCKED'
+                        WHERE trade_id=? AND status IN ('OPEN','LOCKED')
                         """)) {
                     update.setObject(1, tradeId);
                     if (update.executeUpdate() != 1) { connection.rollback(); return false; }
                 }
                 try (PreparedStatement updateItems = connection.prepareStatement("""
                         UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=now()
-                        WHERE trade_id=? AND status IN ('DELIVERY_PENDING','DELIVERING')
+                        WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING')
                         """)) {
                     updateItems.setObject(1, tradeId);
                     updateItems.executeUpdate();
