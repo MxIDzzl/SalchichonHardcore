@@ -30,16 +30,15 @@ public final class TradeEvidenceScanner {
         this.deliveryMarker = new NamespacedKey(plugin, "trade-delivery-operation");
     }
 
-    public List<String> scan(UUID targetUuid, List<TradeEscrowRecord> operations) {
+    public List<String> scan(List<TradeEscrowRecord> operations) {
         Map<UUID, TradeEscrowRecord> byId = new HashMap<>();
         for (TradeEscrowRecord operation : operations) byId.put(operation.operationId(), operation);
 
         List<String> findings = new ArrayList<>();
         int[] counts = new int[3]; // matching, mismatching, unrecognized
+        // Scan every online player, not only the two participants: a marked item
+        // found on an unrelated player is important evidence of unexpected movement.
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (!player.getUniqueId().equals(targetUuid)
-                    && operations.stream().noneMatch(op -> op.ownerUuid().equals(player.getUniqueId())
-                    || op.recipientUuid().equals(player.getUniqueId()))) continue;
             for (ItemStack stack : player.getInventory().getStorageContents()) {
                 inspect(stack, "inventario:" + player.getName(), player.getUniqueId(), byId, findings, counts);
             }
