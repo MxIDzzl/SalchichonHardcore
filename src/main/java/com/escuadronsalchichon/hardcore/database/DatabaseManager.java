@@ -420,6 +420,22 @@ public class DatabaseManager implements PlayerDataStore {
                     ON trade_player_locks(trade_id)
                     """);
             statement.executeUpdate("""
+                    INSERT INTO trade_player_locks(player_uuid,trade_id)
+                    SELECT active.player_uuid, active.trade_id
+                    FROM (
+                        SELECT player_a AS player_uuid, trade_id FROM trade_sessions
+                        WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                        UNION ALL
+                        SELECT player_b AS player_uuid, trade_id FROM trade_sessions
+                        WHERE status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                    ) active
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM trade_player_locks existing
+                        WHERE existing.player_uuid=active.player_uuid
+                          AND existing.trade_id=active.trade_id
+                    )
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS operation_receipts (
                         operation_id TEXT PRIMARY KEY,
                         player_uuid TEXT NOT NULL,
