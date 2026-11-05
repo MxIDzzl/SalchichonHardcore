@@ -189,10 +189,7 @@ public final class VaultInventoryService implements Listener {
                     ? store.abortVaultDeposit(uuid, operation.itemId())
                     : store.commitVaultDeposit(uuid, operation.itemId());
             Bukkit.getScheduler().runTask(plugin, () -> {
-                if (!player.isOnline()) {
-                    lockedPlayers.remove(uuid);
-                    return;
-                }
+                if (!player.isOnline()) return;
                 if (!resolved) {
                     player.sendMessage("§cUna operación Player Value sigue sin poder verificarse. El inventario permanece protegido.");
                     plugin.getLogger().warning("No se pudo resolver la operación " + operation.itemId() + " de " + player.getName() + ".");
