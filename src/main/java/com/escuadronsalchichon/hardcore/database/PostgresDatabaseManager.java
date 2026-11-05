@@ -1193,7 +1193,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
             try {
                 UUID tradeId;
                 try (PreparedStatement find = connection.prepareStatement(
-                        "SELECT trade_id FROM trade_item_operations WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED' FOR UPDATE")) {
+                        "SELECT trade_id FROM trade_item_operations WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'")) {
                     find.setObject(1, operationId);
                     find.setObject(2, ownerUuid);
                     try (ResultSet result = find.executeQuery()) {
