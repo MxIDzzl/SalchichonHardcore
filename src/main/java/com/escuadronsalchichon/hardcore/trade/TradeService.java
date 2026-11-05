@@ -49,6 +49,10 @@ public final class TradeService implements Listener {
     }
 
     public void createTrade(Player a, Player b) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
+            a.sendMessage("§cNo se pueden iniciar nuevos intercambios mientras la función está desactivada.");
+            return;
+        }
         if (a.getUniqueId().equals(b.getUniqueId())) {
             a.sendMessage("§cNo puedes intercambiar contigo mismo.");
             return;
