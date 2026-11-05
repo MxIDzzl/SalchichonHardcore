@@ -247,12 +247,14 @@ public final class VaultWithdrawalService implements Listener {
         int total = 0;
         for (ItemStack item : player.getInventory().getContents()) {
             if (item == null || !item.hasItemMeta()) continue;
-            ItemMeta meta = item.getItemMeta();
-            String marker = meta.getPersistentDataContainer().get(claimMarker, PersistentDataType.STRING);
+            String marker = item.getItemMeta().getPersistentDataContainer()
+                    .get(claimMarker, PersistentDataType.STRING);
             if (!claim.claimId().toString().equals(marker)) continue;
+            ItemStack unmarked = item.clone();
+            ItemMeta meta = unmarked.getItemMeta();
             meta.getPersistentDataContainer().remove(claimMarker);
-            item.setItemMeta(meta);
-            if (!item.isSimilar(expected)) return false;
+            unmarked.setItemMeta(meta);
+            if (!unmarked.isSimilar(expected)) return false;
             total = Math.addExact(total, item.getAmount());
         }
         return total == claim.amount();
