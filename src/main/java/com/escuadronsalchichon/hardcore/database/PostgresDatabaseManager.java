@@ -1,6 +1,7 @@
 package com.escuadronsalchichon.hardcore.database;
 
 import com.escuadronsalchichon.hardcore.player.PlayerData;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.Connection;
