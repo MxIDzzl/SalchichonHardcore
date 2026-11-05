@@ -137,3 +137,8 @@ Además, `markVaultClaimDelivering` solo permite pasar de `PENDING` a `DELIVERIN
 PostgreSQL bloquea ahora primero la fila estable de `player_data` del propietario con `SELECT ... FOR UPDATE` antes de consultar o actualizar `vault_cooldowns`. Esto cubre el caso de un jugador que todavía no tiene fila de cooldown: bloquear únicamente `vault_cooldowns` no bloquea ninguna fila inexistente y permitiría que dos primeras solicitudes compitieran. La fila del jugador serializa esos retiros; después se valida el cooldown y se crea la reclamación dentro de la misma transacción. SQLite ya serializa esta ruta mediante su conexión compartida y método sincronizado.
 
 Esto evita la carrera de cooldown en la capa de persistencia, pero no habilita la función: la entrega física del objeto continúa bloqueada hasta implementar PDC, verificación del inventario y reconciliación tras reinicios.
+
+
+## Read-only operational status command
+
+Administrators can run `/hardcore vault-status` to inspect durable operation counts without changing data or delivering items. It reports PREPARED deposits, DELIVERY_PENDING withdrawals, and RECOVERY_REQUIRED operations split by deposit/withdrawal. The query is implemented by both SQLite and PostgreSQL adapters. This is an observability aid only: it does not reconcile inventory evidence, unlock a player, cancel an operation, or authorize enabling Player Value.
