@@ -15,6 +15,7 @@ public record TradeEscrowRecord(
         Objects.requireNonNull(payload);
         Objects.requireNonNull(fingerprint);
         Objects.requireNonNull(status);
+        if (ownerUuid.equals(recipientUuid)) throw new IllegalArgumentException("Escrow owner and recipient must differ.");
         payload = payload.clone();
         if (!TradeEscrowItem.fingerprint(payload).equalsIgnoreCase(fingerprint)) {
             throw new IllegalArgumentException("Trade escrow fingerprint mismatch.");
