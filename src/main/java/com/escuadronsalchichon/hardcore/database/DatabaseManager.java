@@ -1394,27 +1394,6 @@ public class DatabaseManager implements PlayerDataStore {
     @Override
     public synchronized boolean updatePlayerSkin(UUID uuid, String textureHash) {
         if (!isConnected() || uuid == null) return false;
-        if (textureHash == null || !textureHash.matches("(?i)[0-9a-f]{32,64}")) return false;
-        try (PreparedStatement statement = connection.prepareStatement("""
-                INSERT INTO player_skins(player_uuid,texture_hash,updated_at)
-                VALUES (?,?,CURRENT_TIMESTAMP)
-                ON CONFLICT(player_uuid) DO UPDATE SET
-                    texture_hash=excluded.texture_hash,
-                    updated_at=CURRENT_TIMESTAMP
-                """)) {
-            statement.setString(1, uuid.toString());
-            statement.setString(2, textureHash.toLowerCase(java.util.Locale.ROOT));
-            return statement.executeUpdate() == 1;
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("No se pudo actualizar la skin registrada para " + uuid + ".");
-            return false;
-        }
-    }
-
-
-    @Override
-    public synchronized boolean updatePlayerSkin(UUID uuid, String textureHash) {
-        if (!isConnected() || uuid == null) return false;
         if (textureHash == null) {
             try (PreparedStatement delete = connection.prepareStatement("DELETE FROM player_skins WHERE player_uuid=?")) {
                 delete.setString(1, uuid.toString());
