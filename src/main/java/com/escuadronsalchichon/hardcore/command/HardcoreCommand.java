@@ -133,7 +133,7 @@ public class HardcoreCommand implements CommandExecutor {
                     sender.sendMessage("§d§lTrade evidence — " + target.getUsername());
                     sender.sendMessage("§7Sesión: §f" + session.tradeId() + " §8| §7Estado: §f" + session.status());
                     var findings = new com.escuadronsalchichon.hardcore.trade.TradeEvidenceScanner(plugin)
-                            .scan(target.getUuid(), items);
+                            .scan(items);
                     for (String finding : findings) sender.sendMessage("§7" + finding);
                     sender.sendMessage("§cSolo evidencia visible: no inspecciona playerdata offline ni chunks descargados. La ausencia de marcadores no demuestra que un objeto no exista.");
                     sender.sendMessage("§8No se modificó, retiró ni entregó ningún objeto.");
