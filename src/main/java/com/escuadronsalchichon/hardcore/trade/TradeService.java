@@ -410,8 +410,9 @@ public final class TradeService implements Listener {
                 return;
             }
             Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                boolean complete = store.completeTrade(tradeId);
-                if (!complete) complete = store.completeTrade(tradeId);
+                boolean completionResult = store.completeTrade(tradeId);
+                if (!completionResult) completionResult = store.completeTrade(tradeId);
+                boolean complete = completionResult;
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     processingTrades.remove(tradeId);
                     if (complete) {
