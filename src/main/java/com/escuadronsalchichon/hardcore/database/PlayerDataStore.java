@@ -74,8 +74,6 @@ public interface PlayerDataStore {
 
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
-    boolean updatePlayerSkin(UUID uuid, String textureHash);
-
     VaultRecoverySummary getVaultRecoverySummary();
 
     int flagUncertainVaultOperations();
