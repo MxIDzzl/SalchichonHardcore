@@ -2035,7 +2035,7 @@ public class DatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try (var statement = connection.prepareStatement("""
                     UPDATE trade_sessions SET status='COMMITTED',updated_at=CURRENT_TIMESTAMP
-                    WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
+                    WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED','COMMITTED')
                       AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
                                       WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('DELIVERED','RETURNED'))
