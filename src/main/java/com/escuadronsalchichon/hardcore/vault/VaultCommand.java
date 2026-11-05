@@ -13,10 +13,12 @@ import java.util.List;
 public final class VaultCommand implements CommandExecutor {
     private final SalchichonHardcore plugin;
     private final PlayerDataStore store;
+    private final VaultInventoryService inventoryService;
 
-    public VaultCommand(SalchichonHardcore plugin, PlayerDataStore store) {
+    public VaultCommand(SalchichonHardcore plugin, PlayerDataStore store, VaultInventoryService inventoryService) {
         this.plugin = plugin;
         this.store = store;
+        this.inventoryService = inventoryService;
     }
 
     @Override
@@ -25,13 +27,17 @@ public final class VaultCommand implements CommandExecutor {
             sender.sendMessage("§cEste comando solo puede utilizarse dentro del juego.");
             return true;
         }
+        if (args.length == 1 && args[0].equalsIgnoreCase("deposit")) {
+            inventoryService.deposit(player);
+            return true;
+        }
         if (!plugin.getConfig().getBoolean("player-value.enabled", false)) {
             player.sendMessage("§cPlayer Value está temporalmente desactivado mientras se termina de validar el sistema de inventarios.");
             return true;
         }
         int page = 0;
         if (args.length > 1) {
-            player.sendMessage("§eUso: /value [página]");
+            player.sendMessage("§eUso: /value [página] o /value deposit");
             return true;
         }
         if (args.length == 1) {
