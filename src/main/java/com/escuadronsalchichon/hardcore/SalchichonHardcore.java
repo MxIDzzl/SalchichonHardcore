@@ -18,9 +18,6 @@ import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
 import com.escuadronsalchichon.hardcore.vault.VaultCommand;
 import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
 import com.escuadronsalchichon.hardcore.vault.VaultWithdrawalService;
-import com.escuadronsalchichon.hardcore.trade.TradeCommand;
-import com.escuadronsalchichon.hardcore.trade.TradeService;
-import com.escuadronsalchichon.hardcore.trade.TradeMenuListener;
 import com.escuadronsalchichon.hardcore.vault.VaultInventoryService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -35,7 +32,6 @@ public class SalchichonHardcore extends JavaPlugin {
     private PlaytimeTracker playtimeTracker;
     private VaultInventoryService vaultInventoryService;
     private VaultWithdrawalService vaultWithdrawalService;
-    private TradeService tradeService;
 
     @Override
     public void onEnable() {
@@ -113,20 +109,6 @@ public class SalchichonHardcore extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new VaultMenuListener(this, vaultWithdrawalService), this);
         getServer().getPluginManager().registerEvents(vaultInventoryService, this);
         getServer().getPluginManager().registerEvents(vaultWithdrawalService, this);
-
-        tradeService = new TradeService(this, databaseManager);
-        var tradeCommand = getCommand("trade");
-        if (tradeCommand == null) {
-            getLogger().severe("No se pudo registrar el comando trade. Revisa plugin.yml.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
-        TradeCommand tradeExecutor = new TradeCommand(this, tradeService);
-        tradeCommand.setExecutor(tradeExecutor);
-        tradeCommand.setTabCompleter(tradeExecutor);
-        getServer().getPluginManager().registerEvents(tradeExecutor, this);
-        getServer().getPluginManager().registerEvents(tradeService, this);
-        getServer().getPluginManager().registerEvents(new TradeMenuListener(tradeService), this);
 
         for (var world : Bukkit.getWorlds()) {
             worldRuleManager.applyRules(world);
