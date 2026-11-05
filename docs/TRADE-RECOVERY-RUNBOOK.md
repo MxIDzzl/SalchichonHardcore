@@ -8,7 +8,7 @@ This procedure is deliberately conservative. A trade marked `RECOVERY_REQUIRED` 
 - Player Value, vault items, currency, totems, and life counters are outside trade recovery.
 - The admin API endpoint `GET /api/v1/admin/trades/recovery` is an inspection aid only. It never returns serialized item payloads and cannot force delivery or cancellation.
 - The existing `/hardcore trade-status <player>` command is read-only.
-- `/hardcore trade-evidence <player>` scans online participant inventories (storage, armor, offhand, ender chest) and item entities in currently loaded chunks. It is read-only and reports marker/fingerprint matches or discrepancies.
+- `/hardcore trade-evidence <player>` scans all online player inventories (storage, armor, offhand, ender chest), including non-participants and item entities in currently loaded chunks. It is read-only and reports marker/fingerprint matches or discrepancies.
 - Do not perform this procedure on the live production world until the complete staging checklist and backup/restore rehearsal have passed.
 
 ## Immediate containment
