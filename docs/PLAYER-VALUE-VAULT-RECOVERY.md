@@ -176,3 +176,19 @@ Automatic recovery is deliberately asymmetric:
 Startup quarantine changes interrupted `DEPOSIT/PREPARED` to `RECOVERY_REQUIRED`, but preserves `DEPOSIT/DELIVERY_PENDING` as durable evidence that the inventory removal was saved. The recovery query includes all three nonterminal states. The transaction that credits Player Value now accepts only `DELIVERY_PENDING`; it cannot credit a PREPARED row merely because its marker is missing.
 
 This closes the dangerous window where a crash after inventory removal but before durable removal acknowledgement could otherwise be mistaken for a completed removal. That narrow window now fails closed for manual review instead of automatically crediting or cancelling.
+
+## Inventory-backed withdrawal adapter — 2026-11-05
+
+The plugin now exposes withdrawal through clicking a stored item in the `/value` inventory:
+
+1. The UI closes and the shared per-player inventory-operation lock is acquired.
+2. The selected vault item is deserialized and validated against its stored material and amount. Delivery is rejected before the database transaction if the player's storage inventory has insufficient empty-slot capacity.
+3. Both database adapters execute the existing transactional withdrawal claim: reserve/delete the vault item, decrement the Player Value aggregate, create a `WITHDRAW/DELIVERY_PENDING` operation and `PENDING` claim, and persist the cooldown atomically.
+4. The service changes the claim from `PENDING` to `DELIVERING` before adding an item carrying a plugin-owned `vault-withdrawal-claim` PDC marker.
+5. The inventory is saved before the claim and operation are atomically changed to `DELIVERED`. Only after that acknowledgement is the PDC marker stripped and player data saved again.
+6. On join, unresolved `PENDING`, `DELIVERING`, and `RECOVERY_REQUIRED` claims are inspected. A `PENDING` claim with no marker can safely begin delivery. An interrupted claim is acknowledged only if the exact claim marker and exact total item amount are present. Missing, partial, or contradictory evidence is quarantined; the service never blindly issues a second copy.
+7. The recovery query is delayed until deposit reconciliation has completed, and both services share the same per-player inventory lock.
+
+The SQLite and PostgreSQL adapters now allow an atomic acknowledgement from `DELIVERING` or `RECOVERY_REQUIRED`, but only when both the claim and operation rows are in compatible states. Added unit coverage for the claim recovery decision matrix.
+
+**Release gate remains:** `player-value.enabled: false`. The feature still needs crash-injection integration tests against both database engines, staging validation, backup/restore verification, and a review of the server's actual Paper build before live activation. Manual-review claims must not be cleared by operators without checking the player's inventory and durable journal together.
