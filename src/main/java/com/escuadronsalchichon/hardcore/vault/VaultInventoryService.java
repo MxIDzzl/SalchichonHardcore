@@ -3,6 +3,7 @@ package com.escuadronsalchichon.hardcore.vault;
 import com.escuadronsalchichon.hardcore.SalchichonHardcore;
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.database.VaultItemRecord;
+import com.escuadronsalchichon.hardcore.database.VaultDepositRecoveryRecord;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
@@ -34,6 +35,7 @@ public final class VaultInventoryService implements Listener {
     private final VaultItemPolicy policy;
     private final NamespacedKey depositMarker;
     private final Set<UUID> lockedPlayers = ConcurrentHashMap.newKeySet();
+    private final Set<UUID> recoveryPlayers = ConcurrentHashMap.newKeySet();
 
     public VaultInventoryService(SalchichonHardcore plugin, PlayerDataStore store) {
         this.plugin = plugin;
@@ -72,7 +74,7 @@ public final class VaultInventoryService implements Listener {
             return;
         }
         UUID playerUuid = player.getUniqueId();
-        if (!lockedPlayers.add(playerUuid)) {
+        if (recoveryPlayers.contains(playerUuid) || !lockedPlayers.add(playerUuid)) {
             player.sendMessage("§eTu inventario está ocupado por una operación Player Value.");
             return;
         }
@@ -122,29 +124,31 @@ public final class VaultInventoryService implements Listener {
                 }
                 ItemStack current = findMarkedItem(player, operationId);
                 if (current == null) {
-                    player.sendMessage("§eEl depósito quedó en recuperación; no muevas objetos hasta volver a entrar.");
-                    lockedPlayers.remove(playerUuid);
+                    recoveryPlayers.add(playerUuid);
+                    player.sendMessage("§eNo se encontró el marcador del depósito. La operación queda bloqueada para revisión; no intentes repetirla.");
                     return;
                 }
                 removeMarkedItem(player, operationId);
                 try {
                     player.saveData();
                 } catch (RuntimeException failure) {
-                    player.sendMessage("§cNo se pudo confirmar el guardado del inventario. La operación quedó aislada para recuperación.");
-                    lockedPlayers.remove(playerUuid);
+                    recoveryPlayers.add(playerUuid);
+                    player.sendMessage("§cNo se pudo confirmar el guardado del inventario. La operación quedó aislada; vuelve a entrar para recuperarla.");
                     return;
                 }
                 Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-                    boolean committed = store.commitVaultDeposit(playerUuid, operationId);
+                    boolean removalRecorded = store.markVaultDepositInventoryRemoved(playerUuid, operationId);
+                    boolean committed = removalRecorded && store.commitVaultDeposit(playerUuid, operationId);
                     Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (player.isOnline()) {
-                            if (committed) {
-                                player.sendMessage("§aDepósito completado: §d+" + credit.getAsLong() + " Player Value");
-                            } else {
-                                player.sendMessage("§eTu objeto fue retirado y el depósito quedó pendiente de recuperación. No intentes repetirlo.");
-                            }
+                        if (!player.isOnline()) return;
+                        if (committed) {
+                            player.sendMessage("§aDepósito completado: §d+" + credit.getAsLong() + " Player Value");
+                            lockedPlayers.remove(playerUuid);
+                            recoveryPlayers.remove(playerUuid);
+                        } else {
+                            player.sendMessage("§eEl depósito no pudo finalizarse automáticamente. Se verificará el registro durable antes de permitir otro depósito.");
+                            startRecovery(player);
                         }
-                        lockedPlayers.remove(playerUuid);
                     });
                 });
             });
@@ -155,14 +159,16 @@ public final class VaultInventoryService implements Listener {
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
-        if (!lockedPlayers.add(uuid)) return;
+        recoveryPlayers.add(uuid);
+        if (hasAnyMarker(player)) lockedPlayers.add(uuid);
         startRecovery(player);
     }
 
     private void startRecovery(Player player) {
         UUID uuid = player.getUniqueId();
+        recoveryPlayers.add(uuid);
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            List<VaultItemRecord> pending = store.getUncertainVaultDeposits(uuid);
+            List<VaultDepositRecoveryRecord> pending = store.getUncertainVaultDeposits(uuid);
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (pending == null) {
@@ -175,21 +181,33 @@ public final class VaultInventoryService implements Listener {
         });
     }
 
-    private void recoverNext(Player player, List<VaultItemRecord> pending, int index) {
+    private void recoverNext(Player player, List<VaultDepositRecoveryRecord> pending, int index) {
         UUID uuid = player.getUniqueId();
         if (!player.isOnline()) return;
         if (index >= pending.size()) {
             clearOrphanMarkers(player);
             player.saveData();
             lockedPlayers.remove(uuid);
+            recoveryPlayers.remove(uuid);
             if (!pending.isEmpty()) player.sendMessage("§aSe revisaron " + pending.size() + " operación(es) de Player Value.");
             return;
         }
 
-        VaultItemRecord operation = pending.get(index);
+        VaultDepositRecoveryRecord recovery = pending.get(index);
+        VaultItemRecord operation = recovery.item();
         boolean markerPresent = findMarkedItem(player, operation.itemId()) != null;
+        boolean safeAbort = markerPresent && (recovery.status().equals("PREPARED")
+                || recovery.status().equals("RECOVERY_REQUIRED"));
+        boolean safeCommit = !markerPresent && recovery.status().equals("DELIVERY_PENDING");
+        if (!safeAbort && !safeCommit) {
+            if (markerPresent) lockedPlayers.add(uuid);
+            else lockedPlayers.remove(uuid);
+            player.sendMessage("§cUna operación Player Value no tiene evidencia suficiente para resolverse automáticamente. No se volverá a acreditar ni a cancelar sin revisión.");
+            plugin.getLogger().warning("Operación Player Value requiere revisión manual: " + operation.itemId() + " (" + recovery.status() + ").");
+            return;
+        }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            boolean resolved = markerPresent
+            boolean resolved = safeAbort
                     ? store.abortVaultDeposit(uuid, operation.itemId())
                     : store.commitVaultDeposit(uuid, operation.itemId());
             Bukkit.getScheduler().runTask(plugin, () -> {
@@ -203,6 +221,16 @@ public final class VaultInventoryService implements Listener {
                 recoverNext(player, pending, index + 1);
             });
         });
+    }
+
+    private boolean hasAnyMarker(Player player) {
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item != null && item.hasItemMeta()
+                    && item.getItemMeta().getPersistentDataContainer().has(depositMarker, PersistentDataType.STRING)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private ItemStack findMarkedItem(Player player, UUID operationId) {
@@ -266,7 +294,9 @@ public final class VaultInventoryService implements Listener {
 
     @EventHandler
     public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
-        lockedPlayers.remove(event.getPlayer().getUniqueId());
+        UUID uuid = event.getPlayer().getUniqueId();
+        lockedPlayers.remove(uuid);
+        recoveryPlayers.remove(uuid);
     }
 
     @EventHandler
