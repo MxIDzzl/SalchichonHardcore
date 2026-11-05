@@ -305,23 +305,6 @@ public final class VaultInventoryService implements Listener {
         if (changed) player.getInventory().setContents(contents);
     }
 
-    private void clearOrphanMarkers(Player player) {
-        ItemStack[] contents = player.getInventory().getContents();
-        boolean changed = false;
-        for (int i = 0; i < contents.length; i++) {
-            ItemStack item = contents[i];
-            if (item == null || !item.hasItemMeta()) continue;
-            ItemMeta meta = item.getItemMeta();
-            if (!meta.getPersistentDataContainer().has(depositMarker, PersistentDataType.STRING)) continue;
-            meta.getPersistentDataContainer().remove(depositMarker);
-            item.setItemMeta(meta);
-            contents[i] = item;
-            changed = true;
-        }
-        if (changed) player.getInventory().setContents(contents);
-    }
-
-
     private boolean writeMarker(ItemStack item, UUID operationId) {
         try {
             ItemMeta meta = item.getItemMeta();
