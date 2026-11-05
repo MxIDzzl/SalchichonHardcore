@@ -1184,6 +1184,74 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
+
+    @Override
+    public boolean requestTradeItemReturn(UUID operationId, UUID ownerUuid, long expectedRevision) {
+        if (!isConnected() || operationId == null || ownerUuid == null || expectedRevision < 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                UUID tradeId;
+                try (PreparedStatement find = connection.prepareStatement(
+                        "SELECT trade_id FROM trade_item_operations WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED' FOR UPDATE")) {
+                    find.setObject(1, operationId);
+                    find.setObject(2, ownerUuid);
+                    try (ResultSet result = find.executeQuery()) {
+                        if (!result.next()) { connection.rollback(); return false; }
+                        tradeId = result.getObject(1, UUID.class);
+                    }
+                }
+                try (PreparedStatement updateSession = connection.prepareStatement("""
+                        UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
+                            confirmed_revision_b=NULL,updated_at=now()
+                        WHERE trade_id=? AND status='OPEN' AND revision=?
+                          AND (player_a=? OR player_b=?)
+                        """)) {
+                    updateSession.setObject(1, tradeId);
+                    updateSession.setLong(2, expectedRevision);
+                    updateSession.setObject(3, ownerUuid);
+                    updateSession.setObject(4, ownerUuid);
+                    if (updateSession.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement updateItem = connection.prepareStatement("""
+                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=now()
+                        WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'
+                        """)) {
+                    updateItem.setObject(1, operationId);
+                    updateItem.setObject(2, ownerUuid);
+                    if (updateItem.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo preparar la devolución del objeto.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeItemReturned(UUID operationId, UUID ownerUuid) {
+        if (!isConnected() || operationId == null || ownerUuid == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_item_operations SET status='RETURNED',updated_at=now()
+                     WHERE operation_id=? AND owner_uuid=? AND status IN ('RETURN_PENDING','RETURNED')
+                     """)) {
+            statement.setObject(1, operationId);
+            statement.setObject(2, ownerUuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la devolución del objeto.");
+            return false;
+        }
+    }
+
     @Override
     public boolean markTradeEscrowed(UUID operationId) {
         if (!isConnected() || operationId == null) return false;
@@ -1338,7 +1406,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement updateItems = connection.prepareStatement("""
                         UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=now()
-                        WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','DELIVERY_PENDING','DELIVERING')
+                        WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','RETURN_PENDING','DELIVERY_PENDING','DELIVERING')
                         """)) {
                     updateItems.setObject(1, tradeId);
                     updateItems.executeUpdate();
@@ -1402,7 +1470,7 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
                         UPDATE trade_sessions SET status='CANCELLED',updated_at=now()
                         WHERE trade_id=? AND status='OPEN' AND (player_a=? OR player_b=?)
                           AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                          WHERE o.trade_id=trade_sessions.trade_id)
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'RETURNED')
                         """)) {
                     update.setObject(1, tradeId);
                     update.setObject(2, actor);
