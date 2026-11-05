@@ -660,18 +660,34 @@ public final class TradeService implements Listener {
 
     private boolean hasExpectedMarker(Player player, List<TradeEscrowRecord> items) {
         UUID playerId = player.getUniqueId();
+        Set<String> expected = new java.util.HashSet<>();
         for (TradeEscrowRecord item : items) {
             if (item.ownerUuid().equals(playerId) && "PREPARED".equals(item.status())) {
                 ItemStack marked = findOperationMarkedStack(player, escrowMarker, item.operationId());
-                if (marked != null && matchesPayload(marked, item.payload(), escrowMarker)) return true;
+                if (marked != null) {
+                    if (!matchesPayload(marked, item.payload(), escrowMarker)) return false;
+                    expected.add(item.operationId().toString());
+                }
             }
             if (item.recipientUuid().equals(playerId)
                     && ("DELIVERING".equals(item.status()) || "DELIVERED".equals(item.status()))) {
                 ItemStack marked = findOperationMarkedStack(player, deliveryMarker, item.operationId());
-                if (marked != null && matchesPayload(marked, item.payload(), deliveryMarker)) return true;
+                if (marked != null) {
+                    if (!matchesPayload(marked, item.payload(), deliveryMarker)) return false;
+                    expected.add(item.operationId().toString());
+                }
             }
         }
-        return false;
+        boolean found = false;
+        for (ItemStack item : player.getInventory().getContents()) {
+            for (NamespacedKey key : List.of(escrowMarker, deliveryMarker)) {
+                if (!hasMarker(item, key)) continue;
+                found = true;
+                String operation = item.getItemMeta().getPersistentDataContainer().get(key, PersistentDataType.STRING);
+                if (operation == null || !expected.contains(operation)) return false;
+            }
+        }
+        return found && !expected.isEmpty();
     }
 
     @EventHandler
