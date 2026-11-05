@@ -87,6 +87,16 @@ public final class VaultWithdrawalService implements Listener {
                     player.sendMessage("§cNo se pudieron revisar los retiros pendientes. Player Value queda bloqueado.");
                     return;
                 }
+                if (claims.isEmpty()) {
+                    clearOrphanMarkers(player);
+                    player.saveData();
+                    return;
+                }
+                if (!inventoryLocks.beginExternalOperation(uuid)) {
+                    inventoryLocks.quarantineExternalOperation(uuid);
+                    player.sendMessage("§ePlayer Value está terminando otra recuperación; vuelve a entrar para revisar los retiros.");
+                    return;
+                }
                 recoverNext(player, claims, 0);
             });
         });
@@ -110,10 +120,6 @@ public final class VaultWithdrawalService implements Listener {
                 player.sendMessage("§cUna reclamación pendiente tiene un marcador inesperado. Requiere revisión manual.");
                 return;
             }
-            if (!inventoryLocks.beginExternalOperation(uuid)) {
-                inventoryLocks.quarantineExternalOperation(uuid);
-                return;
-            }
             deliverPending(player, claim, () -> recoverNext(player, claims, index + 1));
             return;
         }
@@ -122,10 +128,6 @@ public final class VaultWithdrawalService implements Listener {
             if (marked > 0) player.sendMessage("§cEl objeto de un retiro interrumpido está incompleto. No lo muevas; requiere revisión.");
             else player.sendMessage("§cUn retiro interrumpido no tiene evidencia de entrega. No se volverá a generar automáticamente.");
             plugin.getLogger().warning("Retiro requiere revisión manual: " + claim.claimId() + " (" + claim.status() + ").");
-            return;
-        }
-        if (!inventoryLocks.beginExternalOperation(uuid)) {
-            inventoryLocks.quarantineExternalOperation(uuid);
             return;
         }
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
