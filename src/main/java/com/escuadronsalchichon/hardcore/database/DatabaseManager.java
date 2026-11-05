@@ -242,6 +242,14 @@ public class DatabaseManager implements PlayerDataStore {
                     )
                     """);
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_skins (
+                        player_uuid TEXT PRIMARY KEY,
+                        texture_hash TEXT NOT NULL CHECK (length(texture_hash) BETWEEN 32 AND 64),
+                        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (player_uuid) REFERENCES player_data(uuid) ON DELETE CASCADE
+                    )
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS player_value_adjustments (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         player_uuid TEXT NOT NULL,
@@ -1373,6 +1381,27 @@ public class DatabaseManager implements PlayerDataStore {
         }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
     }
 
+
+
+    @Override
+    public synchronized boolean updatePlayerSkin(UUID uuid, String textureHash) {
+        if (!isConnected() || uuid == null) return false;
+        if (textureHash == null || !textureHash.matches("(?i)[0-9a-f]{32,64}")) return false;
+        try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO player_skins(player_uuid,texture_hash,updated_at)
+                VALUES (?,?,CURRENT_TIMESTAMP)
+                ON CONFLICT(player_uuid) DO UPDATE SET
+                    texture_hash=excluded.texture_hash,
+                    updated_at=CURRENT_TIMESTAMP
+                """)) {
+            statement.setString(1, uuid.toString());
+            statement.setString(2, textureHash.toLowerCase(java.util.Locale.ROOT));
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("No se pudo actualizar la skin registrada para " + uuid + ".");
+            return false;
+        }
+    }
 
     @Override
     public synchronized VaultRecoverySummary getVaultRecoverySummary() {
