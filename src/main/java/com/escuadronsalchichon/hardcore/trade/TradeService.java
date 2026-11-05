@@ -12,6 +12,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerItemHeldEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerSwapHandItemsEvent;
@@ -771,9 +772,19 @@ public final class TradeService implements Listener {
 
     @EventHandler
     public void onPickup(EntityPickupItemEvent event) {
+        if (hasMarker(event.getItem().getItemStack(), escrowMarker)
+                || hasMarker(event.getItem().getItemStack(), deliveryMarker)) {
+            event.setCancelled(true);
+            return;
+        }
         if (event.getEntity() instanceof Player player && inventoryLocks.contains(player.getUniqueId())) {
             event.setCancelled(true);
         }
+    }
+
+    @EventHandler
+    public void onHeldSlotChange(PlayerItemHeldEvent event) {
+        if (inventoryLocks.contains(event.getPlayer().getUniqueId())) event.setCancelled(true);
     }
 
     @EventHandler
