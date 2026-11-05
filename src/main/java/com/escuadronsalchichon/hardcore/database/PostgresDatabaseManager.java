@@ -1295,16 +1295,32 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
     @Override
     public boolean completeTrade(UUID tradeId) {
         if (!isConnected() || tradeId == null) return false;
-        try (Connection connection = pool.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE trade_sessions SET status='COMMITTED',updated_at=now()
-                     WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
-                       AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
-                       AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
-                                       WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
-                     """)) {
-            statement.setObject(1, tradeId);
-            return statement.executeUpdate() == 1;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='COMMITTED',updated_at=now()
+                        WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED')
+                          AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
+                          AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'DELIVERED')
+                        """)) {
+                    statement.setObject(1, tradeId);
+                    if (statement.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement release = connection.prepareStatement(
+                        "DELETE FROM trade_player_locks WHERE trade_id=?")) {
+                    release.setObject(1, tradeId);
+                    release.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo finalizar el intercambio.");
             return false;
