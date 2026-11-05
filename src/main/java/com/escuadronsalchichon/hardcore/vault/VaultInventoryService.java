@@ -116,9 +116,8 @@ public final class VaultInventoryService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (!prepared) {
-                    restoreMarkedItem(player, operationId, original);
-                    lockedPlayers.remove(playerUuid);
-                    player.sendMessage("§cNo se pudo registrar el depósito; conservas tu objeto.");
+                    player.sendMessage("§eLa respuesta del registro no fue concluyente. Se está verificando el inventario antes de liberar la operación.");
+                    startRecovery(player);
                     return;
                 }
                 ItemStack current = findMarkedItem(player, operationId);
@@ -157,6 +156,11 @@ public final class VaultInventoryService implements Listener {
         Player player = event.getPlayer();
         UUID uuid = player.getUniqueId();
         if (!lockedPlayers.add(uuid)) return;
+        startRecovery(player);
+    }
+
+    private void startRecovery(Player player) {
+        UUID uuid = player.getUniqueId();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             List<VaultItemRecord> pending = store.getUncertainVaultDeposits(uuid);
             Bukkit.getScheduler().runTask(plugin, () -> {
@@ -259,12 +263,6 @@ public final class VaultInventoryService implements Listener {
         }
     }
 
-    private void restoreMarkedItem(Player player, UUID operationId, ItemStack original) {
-        if (!player.isOnline()) return;
-        removeMarkedItem(player, operationId);
-        player.getInventory().setItemInMainHand(original);
-        player.saveData();
-    }
 
     @EventHandler
     public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
