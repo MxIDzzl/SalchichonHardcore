@@ -35,3 +35,15 @@ CREATE INDEX IF NOT EXISTS idx_trade_item_operations_recovery
 CREATE INDEX IF NOT EXISTS idx_trade_item_operations_player_pending
     ON trade_item_operations (recipient_uuid, status)
     WHERE status IN ('DELIVERY_PENDING','DELIVERING','RETURN_PENDING','RECOVERY_REQUIRED');
+
+-- A participant lock is role-independent: the same UUID cannot be active as A
+-- in one session and B in another. Creation must insert both rows atomically.
+CREATE TABLE IF NOT EXISTS trade_player_locks (
+    player_uuid UUID PRIMARY KEY REFERENCES player_data(uuid) ON DELETE RESTRICT,
+    trade_id UUID NOT NULL REFERENCES trade_sessions(trade_id) ON DELETE RESTRICT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (trade_id, player_uuid)
+);
+
+CREATE INDEX IF NOT EXISTS idx_trade_player_locks_trade
+    ON trade_player_locks (trade_id);
