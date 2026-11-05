@@ -464,12 +464,15 @@ public final class TradeService implements Listener {
     private void quarantine(UUID tradeId, UUID aId, UUID bId, String reason) {
         if (aId != null) inventoryLocks.add(aId);
         if (bId != null) inventoryLocks.add(bId);
+        List<UUID> onlineIds = aId == null && bId == null
+                ? Bukkit.getOnlinePlayers().stream().map(Player::getUniqueId).toList()
+                : List.of();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             boolean isolated = store.markTradeRecoveryRequired(tradeId);
             TradeSessionRecord active = null;
             if (aId == null && bId == null) {
-                for (Player online : Bukkit.getOnlinePlayers()) {
-                    TradeSessionRecord candidate = store.getActiveTrade(online.getUniqueId());
+                for (UUID onlineId : onlineIds) {
+                    TradeSessionRecord candidate = store.getActiveTrade(onlineId);
                     if (candidate != null && candidate.tradeId().equals(tradeId)) { active = candidate; break; }
                 }
             }
@@ -626,7 +629,8 @@ public final class TradeService implements Listener {
             Bukkit.getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 if (session.status() == TradeStatus.RECOVERY_REQUIRED) {
-                    inventoryLocks.add(playerId);
+                    inventoryLocks.add(session.playerA());
+                    inventoryLocks.add(session.playerB());
                     player.sendMessage("§cTienes un intercambio aislado para revisión manual. No muevas objetos marcados.");
                     return;
                 }
