@@ -124,7 +124,11 @@ public final class VaultWithdrawalService implements Listener {
         }
         VaultClaimRecord claim = claims.get(index);
         int marked = markedAmount(player, claim.claimId());
+        boolean exactMarkedItem = hasExactMarkedItem(player, claim);
         var action = claim.actionFor(marked);
+        if (action == VaultClaimRecord.RecoveryAction.ACKNOWLEDGE_DELIVERY && !exactMarkedItem) {
+            action = VaultClaimRecord.RecoveryAction.MANUAL_REVIEW;
+        }
         if (action == VaultClaimRecord.RecoveryAction.DELIVER_PENDING) {
             deliverPending(player, claim, () -> recoverNext(player, claims, index + 1));
             return;
@@ -235,6 +239,23 @@ public final class VaultWithdrawalService implements Listener {
         } catch (RuntimeException invalid) {
             return false;
         }
+    }
+
+    private boolean hasExactMarkedItem(Player player, VaultClaimRecord claim) {
+        ItemStack expected = deserialize(claim.payload());
+        if (!validItem(expected, claim.material(), claim.amount())) return false;
+        int total = 0;
+        for (ItemStack item : player.getInventory().getContents()) {
+            if (item == null || !item.hasItemMeta()) continue;
+            ItemMeta meta = item.getItemMeta();
+            String marker = meta.getPersistentDataContainer().get(claimMarker, PersistentDataType.STRING);
+            if (!claim.claimId().toString().equals(marker)) continue;
+            meta.getPersistentDataContainer().remove(claimMarker);
+            item.setItemMeta(meta);
+            if (!item.isSimilar(expected)) return false;
+            total = Math.addExact(total, item.getAmount());
+        }
+        return total == claim.amount();
     }
 
     private int markedAmount(Player player, UUID claimId) {
