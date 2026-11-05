@@ -34,10 +34,6 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
             sender.sendMessage("§cEste comando solo puede utilizarse dentro del juego.");
             return true;
         }
-        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
-            player.sendMessage("§cLos intercambios están desactivados por configuración.");
-            return true;
-        }
         if (args.length == 0) {
             trades.openMenu(player, 0);
             return true;
@@ -69,6 +65,10 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
     }
 
     private void invite(Player inviter, String targetName) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
+            inviter.sendMessage("§cNo se pueden iniciar nuevos intercambios mientras la función está desactivada.");
+            return;
+        }
         Player target = Bukkit.getPlayerExact(targetName);
         if (target == null || !target.isOnline()) {
             inviter.sendMessage("§cEse jugador no está conectado.");
@@ -100,6 +100,11 @@ public final class TradeCommand implements CommandExecutor, TabCompleter, Listen
     }
 
     private void accept(Player target) {
+        if (!plugin.getConfig().getBoolean("trade.enabled", false)) {
+            invitations.remove(target.getUniqueId());
+            target.sendMessage("§cLa función de intercambios está desactivada; no se iniciarán nuevas sesiones.");
+            return;
+        }
         UUID inviterId = invitations.remove(target.getUniqueId());
         if (inviterId == null) {
             target.sendMessage("§cNo tienes invitaciones pendientes.");
