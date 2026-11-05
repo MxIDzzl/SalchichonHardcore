@@ -640,6 +640,20 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection()) {
             connection.setAutoCommit(false);
             try {
+                // Lock the durable owner row first. A SELECT ... FOR UPDATE on the
+                // cooldown table alone does not lock anything when no cooldown row
+                // exists yet, allowing two first-time withdrawals to race.
+                try (PreparedStatement owner = connection.prepareStatement(
+                        "SELECT uuid FROM player_data WHERE uuid=? FOR UPDATE")) {
+                    owner.setObject(1, uuid);
+                    try (ResultSet result = owner.executeQuery()) {
+                        if (!result.next()) {
+                            connection.rollback();
+                            return null;
+                        }
+                    }
+                }
+
                 try (PreparedStatement cooldown = connection.prepareStatement(
                         "SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=? FOR UPDATE")) {
                     cooldown.setObject(1, uuid);
