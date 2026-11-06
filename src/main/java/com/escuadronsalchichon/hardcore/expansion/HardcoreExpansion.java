@@ -4,6 +4,7 @@ import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.util.PlayerValueFormatter;
 import com.escuadronsalchichon.hardcore.util.PlaytimeFormatter;
+import com.escuadronsalchichon.hardcore.util.DifficultyProgression;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.OfflinePlayer;
@@ -13,10 +14,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 
 public class HardcoreExpansion extends PlaceholderExpansion {
     private final JavaPlugin plugin;
@@ -50,8 +47,8 @@ public class HardcoreExpansion extends PlaceholderExpansion {
                 case "health" -> getHealthValue(player);
                 case "health_display" -> getHealthDisplay(player);
                 case "season" -> plugin.getConfig().getString("season.name", "UHC SEASON 1");
-                case "difficulty" -> plugin.getConfig().getString("season.difficulty", "HARD");
-                case "season_day" -> getSeasonDay();
+                case "difficulty" -> DifficultyProgression.currentDifficulty(plugin);
+                case "season_day" -> String.valueOf(DifficultyProgression.seasonDay(plugin));
                 default -> null;
             };
         } catch (Exception exception) {
@@ -80,15 +77,4 @@ public class HardcoreExpansion extends PlaceholderExpansion {
     }
 
 
-    private String getSeasonDay() {
-        String start = plugin.getConfig().getString("season.start-date", LocalDate.now().toString());
-        String zoneName = plugin.getConfig().getString("settings.timezone", "America/Mexico_City");
-        try {
-            LocalDate startDate = LocalDate.parse(start);
-            LocalDate today = LocalDate.now(ZoneId.of(zoneName));
-            return String.valueOf(Math.max(1, ChronoUnit.DAYS.between(startDate, today) + 1));
-        } catch (java.time.DateTimeException exception) {
-            return "1";
-        }
-    }
 }
