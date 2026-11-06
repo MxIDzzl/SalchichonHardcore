@@ -8,6 +8,17 @@ settings:
 # El plugin seguirá usando hardcore.db hasta completar y verificar el importador.
 # Define SALCHICHON_DB_USER y SALCHICHON_DB_PASSWORD en el entorno del servidor.
 database:
+  mysql:
+    enabled: false
+    jdbc-url: "jdbc:mysql://127.0.0.1:3306/salchichon?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+    username-env: "SALCHICHON_MYSQL_USER"
+    password-env: "SALCHICHON_MYSQL_PASSWORD"
+    pool:
+      maximum-size: 8
+      minimum-idle: 2
+      connection-timeout-ms: 10000
+      validation-timeout-ms: 5000
+      max-lifetime-ms: 1800000
   postgresql:
     enabled: false
     host: "127.0.0.1"
