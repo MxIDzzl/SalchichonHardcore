@@ -135,7 +135,7 @@ class MySqlDatabaseManagerIntegrationTest {
     @Test
     void serializesFirstWithdrawalsForOnePlayerAndHonorsCooldown() throws Exception {
         UUID playerId = UUID.randomUUID();
-        assertTrue(manager.savePlayer(new PlayerData(playerId, "ConcurrentVaultTester", null)));
+        assertTrue(manager.savePlayer(new PlayerData(playerId, "ConcurrentVault", null)));
         VaultItemRecord first = item(playerId, 10);
         VaultItemRecord second = item(playerId, 20);
         deposit(playerId, first);
@@ -168,7 +168,7 @@ class MySqlDatabaseManagerIntegrationTest {
     }
 
     private void deposit(UUID playerId, VaultItemRecord item) {
-        assertTrue(manager.prepareVaultDeposit(playerId, "ConcurrentVaultTester", item));
+        assertTrue(manager.prepareVaultDeposit(playerId, "ConcurrentVault", item));
         assertTrue(manager.markVaultDepositInventoryRemoved(playerId, item.itemId()));
         assertTrue(manager.commitVaultDeposit(playerId, item.itemId()));
     }
