@@ -37,6 +37,6 @@ Este documento corrige el alcance para que el desarrollo no invierta tiempo en s
 - El plugin ya contiene la integración opcional de SkinRestorer que persiste el hash de textura en el perfil.
 - El plugin ya contiene persistencia de bóveda, visor, depósito desde la mano principal y flujo de retiro con marcadores PDC. El selector de depósito tipo cofre ya está implementado; Player Value permanece desactivado hasta completar las pruebas de recuperación y staging.
 - Player Value sigue desactivado por defecto hasta completar pruebas de crash/recovery, SQLite/MySQL y staging.
-- El backend/web ya exponen estadísticas base, perfiles, rankings y anuncios. Falta incorporar la fuente autoritativa de zMClans y presentar el clan en perfiles/directorio/páginas de clan.
+- El plugin sincroniza un snapshot de zMClans; la API y la web ya exponen directorio de clanes, páginas de clan, miembros y asociación de clan en perfiles. Falta la validación end-to-end con datos reales de staging.
 - La web ya tiene estructura de última actualización y próxima actualización; debe pulirse visualmente y validarse con datos reales.
 - No activar MySQL ni cambiar el servidor real hasta completar respaldos, restauración y pruebas de staging.
