@@ -61,7 +61,6 @@ jobs:
   package-test-artifact:
     name: Package verified test artifact
     needs: build
-    if: github.ref == 'refs/heads/feature/postgresql-foundation'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
