@@ -28,7 +28,7 @@ public final class VaultCommand implements CommandExecutor {
             return true;
         }
         if (args.length == 1 && args[0].equalsIgnoreCase("deposit")) {
-            inventoryService.deposit(player);
+            inventoryService.openDepositMenu(player);
             return true;
         }
         if (!plugin.getConfig().getBoolean("player-value.enabled", false)) {
