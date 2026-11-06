@@ -134,7 +134,7 @@ public final class SqliteToMySqlImporter {
         String[] tables = {"player_data", "admin_audit", "player_stats", "player_skins", "stat_events",
                 "player_value_adjustments", "player_value_items", "vault_operations", "vault_claims",
                 "vault_cooldowns", "trade_sessions", "trade_escrow_items", "trade_item_operations",
-                "trade_player_locks", "operation_receipts"};
+                "trade_player_locks", "operation_receipts", "public_clans", "player_clan_memberships"};
         for (String table : tables) {
             if (count(destination, table) != 0) {
                 throw new SQLException("La tabla MySQL destino " + table
