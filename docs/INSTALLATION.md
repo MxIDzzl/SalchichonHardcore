@@ -36,7 +36,7 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Hardcore diario, estadísticas oficiales y sincronización de tiempo de juego: activables con SQLite.
 - Skins: se guarda el hash público de textura que expone SkinsRestorer.
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
-- Player Value: permanece desactivado por defecto. El visor y el depósito actual no equivalen todavía al cofre de depósito multitem que se acordó.
+- Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
 - PostgreSQL: preparado, pero no debe activarse hasta probar la migración con una copia de la base de datos.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
