@@ -4,9 +4,9 @@ Player Value is a personal item vault and prestige score. It is not currency.
 
 ## Player-facing behavior
 
-- `/value` opens a paginated personal vault viewer.
+- `/value` opens a paginated personal vault viewer with a deposit button.
 - Clicking a stored item starts a guarded withdrawal.
-- `/value deposit` opens a chest-style selector showing eligible stacks from the player's inventory. Clicking a stack starts one independently journaled deposit; items are not moved into a transient GUI inventory.
+- The viewer's deposit button or `/value deposit` opens a chest-style selector showing eligible stacks from the player's inventory. Clicking a stack starts one independently journaled deposit; items are not moved into a transient GUI inventory.
 - The aggregate score is the sum of configured per-item values multiplied by deposited amounts.
 - Only materials explicitly listed in `player-value.allowed-items` are accepted. Values can represent rarity tiers by assigning higher scores to rarer materials.
 - The current defaults are DIAMOND=10, EMERALD=6, NETHERITE_INGOT=100, ANCIENT_DEBRIS=25, GOLD_INGOT=2. These are initial balancing values, not a final rarity economy.
