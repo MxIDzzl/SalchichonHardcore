@@ -117,6 +117,33 @@ class MySqlIntegrationTest {
         }
     }
 
+    @Test
+    void mysqlRecoverySummaryUsesPortableConditionalAggregates() throws SQLException {
+        UUID player = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertPlayer(connection, player);
+            insertVaultOperation(connection, UUID.randomUUID(), player, "DEPOSIT", "PREPARED");
+            insertVaultOperation(connection, UUID.randomUUID(), player, "WITHDRAW", "DELIVERY_PENDING");
+            insertVaultOperation(connection, UUID.randomUUID(), player, "DEPOSIT", "RECOVERY_REQUIRED");
+            insertVaultOperation(connection, UUID.randomUUID(), player, "WITHDRAW", "RECOVERY_REQUIRED");
+            try (var query = connection.prepareStatement("""
+                    SELECT
+                        COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING') THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='DELIVERY_PENDING' THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END), 0)
+                    FROM vault_operations
+                    """);
+                 var rows = query.executeQuery()) {
+                assertTrue(rows.next());
+                assertEquals(1, rows.getInt(1));
+                assertEquals(1, rows.getInt(2));
+                assertEquals(1, rows.getInt(3));
+                assertEquals(1, rows.getInt(4));
+            }
+        }
+    }
+
     private static Connection connection() throws SQLException {
         return DriverManager.getConnection(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
     }
@@ -131,16 +158,22 @@ class MySqlIntegrationTest {
 
     private static void insertVaultOperation(Connection connection, UUID operation, UUID player, String status)
             throws SQLException {
+        insertVaultOperation(connection, operation, player, "DEPOSIT", status);
+    }
+
+    private static void insertVaultOperation(Connection connection, UUID operation, UUID player,
+                                             String operationType, String status) throws SQLException {
         try (var insert = connection.prepareStatement("""
                 INSERT INTO vault_operations(
                     operation_id, player_uuid, operation_type, status,
                     material, amount, item_payload, credited_value
-                ) VALUES (?, ?, 'DEPOSIT', ?, 'DIAMOND', 1, ?, 10)
+                ) VALUES (?, ?, ?, ?, 'DIAMOND', 1, ?, 10)
                 """)) {
             insert.setString(1, operation.toString());
             insert.setString(2, player.toString());
-            insert.setString(3, status);
-            insert.setBytes(4, new byte[] {1, 2, 3});
+            insert.setString(3, operationType);
+            insert.setString(4, status);
+            insert.setBytes(5, new byte[] {1, 2, 3});
             insert.executeUpdate();
         }
     }
