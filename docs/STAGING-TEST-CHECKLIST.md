@@ -8,7 +8,7 @@ This build is for a maintenance-window staging test only. It is not a production
 2. Back up the complete server directory, especially `plugins/SalchichonHardcore/`, the existing `hardcore.db`, and the current plugin JAR.
 3. Keep the backup outside the server's active plugin directory.
 4. Install the CI artifact built from `feature/postgresql-foundation`; do not use a JAR from an older workflow run.
-5. Keep `database.postgresql.enabled: false`, `player-value.enabled: false`, and `trade.enabled: false` for the initial compatibility smoke test. Do not configure PostgreSQL for this test.
+5. Keep `database.mysql.enabled: false`, `player-value.enabled: false`, and `trade.enabled: false` for the initial SQLite compatibility smoke test.
 6. Start the server and inspect the full startup log before allowing players in.
 
 ## What to test
@@ -28,7 +28,7 @@ This build is for a maintenance-window staging test only. It is not a production
 
 - Player Value viewer, deposits, withdrawals, PDC markers, durable claims, and conservative recovery are implemented. Keep `player-value.enabled: false` until crash-injection tests, staging inventory validation, and backup/restore are complete.
 - The item-only trade workflow, bilateral GUI, revision-bound confirmations, escrow, returns, settlement, and expiry are implemented. Keep `trade.enabled: false` except on disposable staging accounts/worlds. Staff reconciliation for `RECOVERY_REQUIRED` and automated crash-injection coverage remain release gates. Follow [TRADE-RECOVERY-RUNBOOK.md](TRADE-RECOVERY-RUNBOOK.md); the current API endpoint and `/hardcore trade-status` are inspection-only and do not resolve uncertain inventory state.
-- PostgreSQL schema/pool and the one-way legacy SQLite importer are implemented, but PostgreSQL remains disabled. Do not perform a production cutover until a fresh-database import and full integration/rollback rehearsal pass.
+- MySQL schema/pool and the one-way SQLite importer are implemented, but MySQL remains disabled by default. Do not perform a production cutover until a fresh-database import and full integration/rollback rehearsal pass.
 - The read-only API and public web portal are separate services in `SalchichonSMP-Updates`; this plugin repository does not bundle or deploy them. No browser receives database credentials.
 - The admin page is informational only; no real admin authentication or mutation endpoints exist yet.
 
@@ -60,4 +60,4 @@ Use a disposable staging world and two test accounts. Do not reuse real player i
 11. Restart staging at controlled points around PREPARED escrow, inventory removal, DELIVERING, delivery acknowledgement, RETURN_PENDING, and return acknowledgement. A missing or contradictory marker must quarantine the trade rather than retry blindly.
 12. Verify `/hardcore trade-status <player>` is read-only and reports each operation state. Check logs and database rows after every scenario.
 
-Do not mark trade as release-ready until automated crash-injection tests cover the same boundaries against both SQLite and PostgreSQL, and a staff reconciliation procedure for `RECOVERY_REQUIRED` has been validated.
+Do not mark trade as release-ready until automated crash-injection tests cover the same boundaries against SQLite and MySQL, and a staff reconciliation procedure for `RECOVERY_REQUIRED` has been validated.
