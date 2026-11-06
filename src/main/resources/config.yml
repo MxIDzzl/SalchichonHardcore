@@ -10,6 +10,9 @@ settings:
 database:
   mysql:
     enabled: false
+    # One-time migration only: enable after backing up hardcore.db and using an empty MySQL schema.
+    # Turn it back off after a successful import; the importer refuses a non-empty destination.
+    import-sqlite-on-startup: false
     jdbc-url: "jdbc:mysql://127.0.0.1:3306/salchichon?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
     username-env: "SALCHICHON_MYSQL_USER"
     password-env: "SALCHICHON_MYSQL_PASSWORD"
