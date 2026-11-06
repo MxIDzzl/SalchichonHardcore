@@ -1,15 +1,18 @@
 # Backend API contract (v1)
 
-This document is the implementation contract for the independent SalchichonHardcore API.
-It does not imply that the HTTP service exists or is deployable yet. The Paper plugin,
-API, PostgreSQL instance, public site, and admin site are separate runtime components.
+This document is a future design contract for the independent SalchichonHardcore API.
+The current sibling repository already contains the public read API and a limited private
+admin API, but plugin event ingestion, installation licensing, human admin sessions, and
+the full admin site described here are not implemented. The Paper plugin, API, MySQL
+instance, public site, and admin site are separate runtime components. SQLite remains
+the plugin default until the MySQL staging and migration gates pass.
 
 ## Runtime boundaries
 
 - Paper plugin: authoritative in-game event source and command adapter.
 - API: validates plugin credentials, accepts idempotent event batches, serves public
   read models, and exposes authenticated administrative operations.
-- PostgreSQL: private network only; neither the plugin nor browser connects directly
+- MySQL: private network only; neither the plugin nor browser connects directly
   to it. The API owns database credentials.
 - Public Next.js site: consumes only public read endpoints.
 - Admin Next.js area: consumes admin endpoints and never receives plugin credentials.
@@ -23,7 +26,7 @@ origins; it is not authentication.
 ### Plugin identity
 
 Each installation receives a revocable installation credential. Store only a
-one-way hash of the credential in PostgreSQL. The raw credential is injected into
+one-way hash of the credential in MySQL. The raw credential is injected into
 the server process as an environment variable and is never placed in config.yml,
 logs, command output, the JAR, or a web bundle.
 
@@ -128,7 +131,7 @@ arbitrary SQL, arbitrary table/column names, or unrestricted configuration paths
 Manual Player Value corrections are recorded in the adjustment ledger and must
 remain distinct from item-backed vault value. They never create withdrawable items.
 
-## Core PostgreSQL model
+## Core MySQL model
 
 The existing plugin schema is the initial persistence baseline. The API schema will
 add, in separate versioned migrations:
@@ -149,7 +152,7 @@ changes. The API must not run destructive schema synchronization at startup.
 
 ## Operational requirements
 
-- Health endpoints: liveness without database details; readiness checks PostgreSQL.
+- Health endpoints: liveness without database details; readiness checks MySQL.
 - Structured logs include request ID and installation ID, never bearer tokens.
 - Rate limits apply by installation, IP, and admin identity.
 - Bound request body size, batch size, pagination size, and database query time.
