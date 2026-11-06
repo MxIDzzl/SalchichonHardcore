@@ -2228,16 +2228,25 @@ public class DatabaseManager implements PlayerDataStore {
         if (!isConnected() || clans == null || members == null) return false;
         try {
             connection.setAutoCommit(false);
-            try (var deleteMembers = connection.prepareStatement("DELETE FROM player_clan_memberships");
-                 var deleteClans = connection.prepareStatement("DELETE FROM public_clans")) {
-                deleteMembers.executeUpdate();
-                deleteClans.executeUpdate();
+            try (var inactiveMembers = connection.prepareStatement(
+                        "UPDATE player_clan_memberships SET is_active=0");
+                 var inactiveClans = connection.prepareStatement(
+                        "UPDATE public_clans SET is_active=0")) {
+                inactiveMembers.executeUpdate();
+                inactiveClans.executeUpdate();
             }
             try (var insert = connection.prepareStatement("""
                     INSERT INTO public_clans
                         (clan_uuid,name,tag,description,leader_uuid,created_at,member_count,max_members,
-                         points,level,kills,deaths,kdr)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                         points,level,kills,deaths,kdr,is_active)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1)
+                    ON CONFLICT(clan_uuid) DO UPDATE SET
+                        name=excluded.name, tag=excluded.tag, description=excluded.description,
+                        leader_uuid=excluded.leader_uuid, created_at=excluded.created_at,
+                        member_count=excluded.member_count, max_members=excluded.max_members,
+                        points=excluded.points, level=excluded.level, kills=excluded.kills,
+                        deaths=excluded.deaths, kdr=excluded.kdr, is_active=1,
+                        synced_at=CURRENT_TIMESTAMP
                     """)) {
                 for (ClanRecord clan : clans) {
                     insert.setString(1, clan.clanId().toString());
@@ -2259,8 +2268,13 @@ public class DatabaseManager implements PlayerDataStore {
             }
             try (var insert = connection.prepareStatement("""
                     INSERT INTO player_clan_memberships
-                        (player_uuid,clan_uuid,rank_id,joined_at,kills,deaths,kdr)
-                    VALUES (?,?,?,?,?,?,?)
+                        (player_uuid,clan_uuid,rank_id,joined_at,kills,deaths,kdr,is_active)
+                    VALUES (?,?,?,?,?,?,?,1)
+                    ON CONFLICT(player_uuid) DO UPDATE SET
+                        clan_uuid=excluded.clan_uuid, rank_id=excluded.rank_id,
+                        joined_at=excluded.joined_at, kills=excluded.kills,
+                        deaths=excluded.deaths, kdr=excluded.kdr, is_active=1,
+                        synced_at=CURRENT_TIMESTAMP
                     """)) {
                 for (ClanMemberRecord member : members) {
                     insert.setString(1, member.playerUuid().toString());
@@ -2284,6 +2298,5 @@ public class DatabaseManager implements PlayerDataStore {
             try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
     }
-
 
 }
