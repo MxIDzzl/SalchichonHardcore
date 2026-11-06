@@ -6,7 +6,7 @@ Player Value is a personal item vault and prestige score. It is not currency.
 
 - `/value` opens a paginated personal vault viewer.
 - Clicking a stored item starts a guarded withdrawal.
-- `/value deposit` currently deposits the eligible stack held in the main hand. The current GUI is a viewer, not yet an insert-items chest interface; converting it to the requested deposit chest is still pending.
+- `/value deposit` opens a chest-style selector showing eligible stacks from the player's inventory. Clicking a stack starts one independently journaled deposit; items are not moved into a transient GUI inventory.
 - The aggregate score is the sum of configured per-item values multiplied by deposited amounts.
 - Only materials explicitly listed in `player-value.allowed-items` are accepted. Values can represent rarity tiers by assigning higher scores to rarer materials.
 - The current defaults are DIAMOND=10, EMERALD=6, NETHERITE_INGOT=100, ANCIENT_DEBRIS=25, GOLD_INGOT=2. These are initial balancing values, not a final rarity economy.
@@ -17,7 +17,7 @@ Player Value is a personal item vault and prestige score. It is not currency.
 
 Deposits use a durable PREPARED journal and plugin-owned PDC operation marker before inventory removal. The stored item and aggregate score are committed transactionally. Withdrawals use durable claims and PDC markers; uncertain claims are quarantined rather than automatically delivered again. Inventory operations are locked while a deposit or recovery is unresolved.
 
-The plugin currently has a read-only vault GUI, main-hand deposit command, withdrawal workflow, and conservative recovery logic. These are implemented foundations, not a claim of exactly-once behavior under every possible crash. Full crash-injection integration tests against SQLite and PostgreSQL, staging validation, and backup/restore drills remain release gates. Keep `player-value.enabled: false` on the live server until those gates pass.
+The plugin has a paginated vault viewer, a chest-style deposit selector, fingerprint checks against stale menu entries, independently journaled stack deposits, a withdrawal workflow, and conservative recovery logic. The deposit menu never holds player items in its temporary GUI inventory, so closing the menu or a server restart cannot discard staged GUI contents. These are implemented foundations, not a claim of exactly-once behavior under every possible crash. Full crash-injection integration tests against SQLite and PostgreSQL, staging validation, and backup/restore drills remain release gates. Keep `player-value.enabled: false` on the live server until those gates pass.
 
 ## PlaceholderAPI
 
