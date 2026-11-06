@@ -15,7 +15,8 @@ CREATE TABLE IF NOT EXISTS public_clans (
     kills BIGINT NOT NULL CHECK (kills >= 0),
     deaths BIGINT NOT NULL CHECK (deaths >= 0),
     kdr DOUBLE PRECISION NOT NULL CHECK (kdr >= 0),
-    synced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    synced_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE INDEX IF NOT EXISTS idx_public_clans_points
