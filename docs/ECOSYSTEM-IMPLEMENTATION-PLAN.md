@@ -90,13 +90,13 @@ A feature is releasable only after:
 7. Documented rollback and operator runbook.
 8. CI green on the exact release commit.
 
-## 9. Current state (2026-11-05)
+## 9. Current state (2026-11-06)
 
 The authoritative product scope is documented in [PRODUCT-SCOPE.md](PRODUCT-SCOPE.md). Important scope corrections:
-- Player Value is the personal item vault/rarity-weighted prestige score. The current UI is a read-only viewer with main-hand deposits and withdrawals; the requested deposit chest interface remains to be completed.
+- Player Value is the personal item vault/rarity-weighted prestige score. The paginated viewer, chest-style deposit selector, main-hand/stack deposit path, protected withdrawals, durable journal and conservative recovery are implemented; the feature remains disabled pending crash-injection tests and staging.
 - Trades are handled by the external trade plugin already installed on the server. SalchichonHardcore no longer registers its own /trade runtime command. Legacy trade implementation/schema files remain in the feature branch and are not part of the release scope.
-- zMClans remains the authoritative clan system. The website/API still need a safe synchronization/read model for clan membership and clan pages.
-- SkinRestorer integration is implemented as an optional plugin bridge (API major 15) that stores the texture hash on player join. Website rendering and end-to-end verification remain.
+- zMClans remains the authoritative clan system. The plugin synchronizes a read-only snapshot; the API and web expose clan directories, clan pages, members and player-clan associations.
+- SkinRestorer integration is implemented as an optional plugin bridge (API major 15) that stores the texture hash on player join. The API and web render validated texture hashes; end-to-end verification remains a staging gate.
 - Advanced mob levels and special enemy variants are explicitly deferred to a later phase. Do not block the current portal/plugin scope on them.
 
 ### Paper plugin
@@ -108,8 +108,8 @@ The authoritative product scope is documented in [PRODUCT-SCOPE.md](PRODUCT-SCOP
 
 ### API and web
 - Independent Spring Boot API and Next.js portal remain separate deployable services.
-- Public overview, player directory/profiles, rankings, announcements and scheduled next update are implemented.
-- The web project has responsive styling and profile routes. Clan information/pages and full SkinRestorer skin rendering still need end-to-end integration.
+- Public overview, player directory/profiles, rankings, clan directory/pages, announcements and scheduled next update are implemented.
+- The web project has responsive styling, player profiles, clan pages and SkinRestorer texture rendering; validate them against live staging data.
 - Admin API is disabled by default; secure human authentication and the functional admin panel remain pending.
 - The website must be visually polished, not reduced to a plain statistics page.
 
