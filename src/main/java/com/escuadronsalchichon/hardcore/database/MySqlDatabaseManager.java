@@ -28,8 +28,12 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
     private final MySqlConnectionPool pool;
 
     public MySqlDatabaseManager(JavaPlugin plugin) {
+        this(plugin, new MySqlConnectionPool(plugin));
+    }
+
+    MySqlDatabaseManager(JavaPlugin plugin, MySqlConnectionPool pool) {
         this.plugin = plugin;
-        this.pool = new MySqlConnectionPool(plugin);
+        this.pool = pool;
     }
 
     @Override
