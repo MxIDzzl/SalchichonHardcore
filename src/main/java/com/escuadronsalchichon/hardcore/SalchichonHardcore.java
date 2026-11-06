@@ -40,7 +40,20 @@ public class SalchichonHardcore extends JavaPlugin {
         saveDefaultConfig();
         reloadConfig();
 
-        databaseManager = getConfig().getBoolean("database.postgresql.enabled", false)
+        boolean mysqlRequested = getConfig().getBoolean("database.mysql.enabled", false);
+        boolean postgresqlRequested = getConfig().getBoolean("database.postgresql.enabled", false);
+        if (mysqlRequested && postgresqlRequested) {
+            getLogger().severe("Solo puede habilitarse un backend de base de datos a la vez.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        if (mysqlRequested) {
+            getLogger().severe("MySQL todavía no está integrado como backend completo. Se mantiene SQLite; no habilites database.mysql.enabled.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
+        databaseManager = postgresqlRequested
                 ? new PostgresDatabaseManager(this)
                 : new DatabaseManager(this);
 
