@@ -38,19 +38,19 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- PostgreSQL: preparado, pero no debe activarse hasta probar la migración con una copia de la base de datos.
+- MySQL: el conector y el pool JDBC están preparados, pero todavía falta el adaptador de persistencia, el esquema y el importador SQLite→MySQL. `database.mysql.enabled` debe permanecer en `false`; si se activa prematuramente, el plugin se deshabilita de forma segura en lugar de iniciar accidentalmente con SQLite.
+- PostgreSQL: implementación heredada de una fase anterior; no es el destino de despliegue acordado. Déjalo desactivado.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
-## Migración a PostgreSQL para conectar la web
-La API web requiere PostgreSQL compartido de forma privada. No cambies el backend de producción directamente:
+## Futuro cambio de SQLite a MySQL
 
-1. Prepara una instancia PostgreSQL privada y una base destino vacía.
-2. Haz dos copias de `hardcore.db` con el servidor detenido y verifica `PRAGMA integrity_check`.
-3. Prueba primero en staging. Configura las credenciales del plugin y activa PostgreSQL solo en esa instancia.
-4. Arranca sin jugadores conectados para que el plugin cree el esquema v1-v7.
-5. Desde la consola ejecuta `hardcore migrate-sqlite CONFIRM`.
-6. El importador copia jugadores, estadísticas oficiales, Player Value agregado, hashes de skins, historial estadístico y auditorías. Rechaza la operación si encuentra payloads/operaciones de bóveda o registros internos de trades que esta versión no migra.
-7. Compara todos los conteos, prueba joins, muertes, reset diario, tótems, skins y la sincronización de clanes.
-8. Conserva SQLite y sus respaldos sin modificarlos. No elimines el archivo original después de importar.
+La instalación de producción debe continuar usando SQLite hasta completar el backend MySQL y validarlo en staging. No actives `database.mysql.enabled` todavía: el plugin se detendrá intencionalmente si detecta esa opción, para evitar que parezca que está usando MySQL cuando en realidad no lo hace.
 
-Si la migración se rechaza, no fuerces el cambio: vuelve a SQLite y revisa qué tabla operativa contiene registros. La negativa es deliberada para evitar pérdida silenciosa de objetos o historial.
+Antes del cambio deberán estar terminados y probados:
+1. El esquema MySQL versionado y compatible con MySQL/MariaDB del proveedor.
+2. El adaptador completo de `PlayerDataStore`, incluidas transacciones, estadísticas, auditoría y operaciones durables de Player Value.
+3. El importador SQLite→MySQL con validación de integridad, destino vacío, conteos, rollback y preservación de IDs.
+4. Pruebas reales contra MySQL/MariaDB y ensayos de recuperación ante interrupciones.
+5. Backup restaurable y ensayo completo en staging.
+
+La base SQLite original y sus respaldos se conservarán. No habrá cambio de producción ni activación de Player Value hasta superar esas comprobaciones.
