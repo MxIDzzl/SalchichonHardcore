@@ -38,7 +38,7 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: el conector y el pool JDBC están preparados, pero todavía falta el adaptador de persistencia, el esquema y el importador SQLite→MySQL. `database.mysql.enabled` debe permanecer en `false`; si se activa prematuramente, el plugin se deshabilita de forma segura en lugar de iniciar accidentalmente con SQLite.
+- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. Aún faltan pruebas de integración contra la versión exacta de MySQL/MariaDB del proveedor y ensayos de recuperación; `database.mysql.enabled` debe permanecer en `false`.
 - PostgreSQL: implementación heredada de una fase anterior; no es el destino de despliegue acordado. Déjalo desactivado.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
@@ -47,10 +47,10 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 La instalación de producción debe continuar usando SQLite hasta completar el backend MySQL y validarlo en staging. No actives `database.mysql.enabled` todavía: el plugin se detendrá intencionalmente si detecta esa opción, para evitar que parezca que está usando MySQL cuando en realidad no lo hace.
 
 Antes del cambio deberán estar terminados y probados:
-1. El esquema MySQL versionado y compatible con MySQL/MariaDB del proveedor.
-2. El adaptador completo de `PlayerDataStore`, incluidas transacciones, estadísticas, auditoría y operaciones durables de Player Value.
-3. El importador SQLite→MySQL con validación de integridad, destino vacío, conteos, rollback y preservación de IDs.
-4. Pruebas reales contra MySQL/MariaDB y ensayos de recuperación ante interrupciones.
-5. Backup restaurable y ensayo completo en staging.
+1. Confirmar que la versión MySQL/MariaDB del proveedor admite el DDL usado (checks, columnas generadas e índices).
+2. Validar el adaptador `PlayerDataStore` con pruebas de integración reales, especialmente transacciones de Player Value, auditoría y recuperación.
+3. Ejecutar el importador SQLite→MySQL en una copia de staging: integridad del origen, destino vacío, conteos, rollback y preservación de IDs.
+4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
+5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
 
 La base SQLite original y sus respaldos se conservarán. No habrá cambio de producción ni activación de Player Value hasta superar esas comprobaciones.
