@@ -38,19 +38,19 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. CI ejecuta siete pruebas de integración contra MySQL 8.4: esquema/UPSERT, unicidad y rollback, persistencia real de estadísticas/tótems, dos depósitos consecutivos e idempotencia de Player Value, además de importar una SQLite real a una base MySQL vacía sin alterar el archivo fuente. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging; `database.mysql.enabled` debe permanecer en `false`.
+- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. CI ejecuta siete pruebas de integración contra MySQL 8.4: esquema/UPSERT, unicidad y rollback, persistencia real de estadísticas/tótems, dos depósitos consecutivos e idempotencia de Player Value, además de importar una SQLite real a una base MySQL vacía sin alterar el archivo fuente. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. MySQL ya está cableado para pruebas controladas, pero `database.mysql.enabled` debe permanecer en `false` en producción.
 - PostgreSQL: implementación heredada de una fase anterior; no es el destino de despliegue acordado. Déjalo desactivado.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
 ## Futuro cambio de SQLite a MySQL
 
-La instalación de producción debe continuar usando SQLite hasta completar el backend MySQL y validarlo en staging. No actives `database.mysql.enabled` todavía: el arranque sigue bloqueado intencionalmente hasta cerrar las pruebas de extremo a extremo y staging. Esto evita un cambio accidental de backend.
+La instalación de producción debe continuar usando SQLite hasta completar staging. El backend MySQL ya puede seleccionarse en un servidor de pruebas con `database.mysql.enabled: true`; el valor predeterminado sigue siendo `false`. No cambies producción todavía.
 
 Antes del cambio deberán estar terminados y probados:
 1. Confirmar que la versión MySQL/MariaDB del proveedor admite el DDL usado (checks, columnas generadas e índices).
-2. Completar pruebas de extremo a extremo del adaptador `PlayerDataStore`, especialmente depósitos/retiros reales de Player Value, auditoría y recuperación. Las pruebas base de MySQL 8.4 ya corren en CI.
-3. Ejecutar el importador SQLite→MySQL en una copia de staging: integridad del origen, destino vacío, conteos, rollback y preservación de IDs.
+2. Confirmar que las pruebas de CI del adaptador y del importador SQLite→MySQL siguen pasando en el commit que se vaya a desplegar.
+3. En staging, activar `database.mysql.enabled: true` con una base vacía. Si se migran datos, respaldar `hardcore.db`, activar también `database.mysql.import-sqlite-on-startup: true` durante un solo arranque y dejar que el importador valide integridad, destino vacío, conteos e IDs. Tras una importación correcta, volver esa opción a `false`.
 4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
 5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
 
-La base SQLite original y sus respaldos se conservarán. No habrá cambio de producción ni activación de Player Value hasta superar esas comprobaciones.
+La base SQLite original y sus respaldos se conservarán. Si la importación falla, el plugin se desactiva sin borrar SQLite. No habrá cambio de producción ni activación de Player Value hasta superar esas comprobaciones.
