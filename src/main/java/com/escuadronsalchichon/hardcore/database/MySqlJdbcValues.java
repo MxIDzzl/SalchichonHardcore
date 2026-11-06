@@ -1,6 +1,6 @@
 package com.escuadronsalchichon.hardcore.database;
 
-import java.sql.Calendar;
+import java.util.Calendar;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
