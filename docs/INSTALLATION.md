@@ -10,7 +10,7 @@
 ## Primera instalación segura con SQLite
 1. Apaga el servidor.
 2. Conserva una copia del JAR actual y respalda completa la carpeta `plugins/SalchichonHardcore/`, especialmente `hardcore.db`.
-3. Descarga el artefacto de prueba desde el workflow de [Maven build](https://github.com/MxIDzzl/SalchichonHardcore/actions/workflows/maven-build.yml). El artefacto debe corresponder al commit que se va a instalar.
+3. Descarga `SalchichonHardcore-test-<SHA>` desde el workflow de [Maven build](https://github.com/MxIDzzl/SalchichonHardcore/actions/workflows/maven-build.yml). Solo se publica después de que pase la matriz completa. Verifica que el SHA del nombre del artefacto coincida con el head que quieres probar y valida `SHA256SUMS.txt` antes de subir el JAR.
 4. Sustituye el JAR de SalchichonHardcore, sin borrar la carpeta de datos.
 5. Mantén `database.mysql.enabled: false`, `database.mysql.import-sqlite-on-startup: false` y `player-value.enabled: false`.
 6. Inicia Paper y revisa la consola. Debe aparecer `SalchichonHardcore se ha iniciado correctamente.`.
@@ -38,7 +38,7 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. La suite contiene nueve pruebas de integración SQL (esquema/UPSERT/rollback, operaciones de Player Value e importación SQLite real); CI ejecuta las 50 pruebas contra MySQL 8.4, MariaDB 10.11 y MariaDB 11.4; las tres matrices pasaron en el head validado más reciente. Al iniciar con MySQL habilitado, el plugin registra el producto y versión exactos del motor en la consola (`Motor SQL detectado: ...`), sin exponer credenciales. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. `database.mysql.enabled` debe permanecer en `false` en producción.
+- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. El head validado más reciente ejecutó 55 pruebas por motor, con 0 fallos en MySQL 8.4, MariaDB 10.11 y MariaDB 11.4. Al iniciar con MySQL habilitado, el plugin registra el producto y versión exactos del motor en la consola (`Motor SQL detectado: ...`), sin exponer credenciales. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. `database.mysql.enabled` debe permanecer en `false` en producción.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
 ## Futuro cambio de SQLite a MySQL
@@ -47,7 +47,7 @@ La instalación de producción debe continuar usando SQLite hasta completar stag
 
 Antes del cambio deberán estar terminados y probados:
 1. Obtener la versión exacta desde el log privado `Motor SQL detectado: ...` en una conexión de staging; el prefijo `jdbc:mysql://` por sí solo no identifica si el servidor es MySQL o MariaDB. Verificar el DDL contra esa versión.
-2. Confirmar que las matrices CI de MySQL 8.4 y MariaDB 11.4 del commit que se vaya a desplegar siguen pasando (50 pruebas en cada motor).
+2. Confirmar que las tres matrices CI (MySQL 8.4, MariaDB 10.11 y MariaDB 11.4) del commit exacto que se vaya a probar siguen pasando. Descargar únicamente el artefacto asociado a ese mismo SHA y verificar su checksum.
 3. En staging, activar `database.mysql.enabled: true` con una base vacía. Si se migran datos, respaldar `hardcore.db`, activar también `database.mysql.import-sqlite-on-startup: true` durante un solo arranque y dejar que el importador valide integridad, destino vacío, conteos e IDs. Tras una importación correcta, volver esa opción a `false`.
 4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
 5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
