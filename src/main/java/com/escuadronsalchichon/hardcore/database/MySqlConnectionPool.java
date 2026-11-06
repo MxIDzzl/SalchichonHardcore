@@ -17,6 +17,11 @@ public final class MySqlConnectionPool implements AutoCloseable {
         this.plugin = plugin;
     }
 
+    MySqlConnectionPool(JavaPlugin plugin, HikariDataSource dataSource) {
+        this.plugin = plugin;
+        this.dataSource = dataSource;
+    }
+
     public synchronized void start() throws SQLException {
         if (dataSource != null && !dataSource.isClosed()) return;
 
