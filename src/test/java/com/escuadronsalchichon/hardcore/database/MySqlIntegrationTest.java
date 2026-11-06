@@ -112,13 +112,13 @@ class MySqlIntegrationTest {
 
     @Test
     void mysqlRecoverySummaryUsesPortableConditionalAggregates() throws SQLException {
-        UUID player = UUID.randomUUID();
         try (Connection connection = connection()) {
-            insertPlayer(connection, player);
-            insertVaultOperation(connection, UUID.randomUUID(), player, "DEPOSIT", "PREPARED");
-            insertVaultOperation(connection, UUID.randomUUID(), player, "WITHDRAW", "DELIVERY_PENDING");
-            insertVaultOperation(connection, UUID.randomUUID(), player, "DEPOSIT", "RECOVERY_REQUIRED");
-            insertVaultOperation(connection, UUID.randomUUID(), player, "WITHDRAW", "RECOVERY_REQUIRED");
+            UUID[] players = {UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()};
+            for (UUID player : players) insertPlayer(connection, player);
+            insertVaultOperation(connection, UUID.randomUUID(), players[0], "DEPOSIT", "PREPARED");
+            insertVaultOperation(connection, UUID.randomUUID(), players[1], "WITHDRAW", "DELIVERY_PENDING");
+            insertVaultOperation(connection, UUID.randomUUID(), players[2], "DEPOSIT", "RECOVERY_REQUIRED");
+            insertVaultOperation(connection, UUID.randomUUID(), players[3], "WITHDRAW", "RECOVERY_REQUIRED");
             try (var query = connection.prepareStatement("""
                     SELECT
                         COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING') THEN 1 ELSE 0 END), 0),
