@@ -2,6 +2,7 @@ package com.escuadronsalchichon.hardcore;
 
 import com.escuadronsalchichon.hardcore.command.HardcoreCommand;
 import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.MySqlDatabaseManager;
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.database.PostgresDatabaseManager;
 import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
@@ -22,6 +23,8 @@ import com.escuadronsalchichon.hardcore.vault.VaultWithdrawalService;
 import com.escuadronsalchichon.hardcore.vault.VaultInventoryService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
+
+import java.sql.SQLException;
 
 public class SalchichonHardcore extends JavaPlugin {
 
@@ -47,15 +50,11 @@ public class SalchichonHardcore extends JavaPlugin {
             getServer().getPluginManager().disablePlugin(this);
             return;
         }
-        if (mysqlRequested) {
-            getLogger().severe("MySQL todavía no está integrado como backend completo. Se mantiene SQLite; no habilites database.mysql.enabled.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
-
-        databaseManager = postgresqlRequested
-                ? new PostgresDatabaseManager(this)
-                : new DatabaseManager(this);
+        databaseManager = mysqlRequested
+                ? new MySqlDatabaseManager(this)
+                : postgresqlRequested
+                    ? new PostgresDatabaseManager(this)
+                    : new DatabaseManager(this);
 
         if (!databaseManager.connect()) {
             getLogger().severe("El plugin no puede continuar sin la base de datos.");
@@ -68,6 +67,24 @@ public class SalchichonHardcore extends JavaPlugin {
             databaseManager.disconnect();
             getServer().getPluginManager().disablePlugin(this);
             return;
+        }
+
+        if (mysqlRequested && getConfig().getBoolean("database.mysql.import-sqlite-on-startup", false)) {
+            try {
+                var report = ((MySqlDatabaseManager) databaseManager).importLegacySqlite();
+                getLogger().info("Importación SQLite→MySQL completada: "
+                        + report.playersImported() + " jugadores, "
+                        + report.statsImported() + " estadísticas, "
+                        + report.skinsImported() + " skins, "
+                        + report.statEventsImported() + " eventos y "
+                        + report.auditRowsImported() + " auditorías.");
+            } catch (SQLException exception) {
+                getLogger().severe("Falló la importación SQLite→MySQL. Se conservará SQLite y el plugin se desactivará.");
+                getLogger().severe(exception.getMessage());
+                databaseManager.disconnect();
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
         }
 
         int uncertainClaims = databaseManager.flagUncertainVaultOperations();
