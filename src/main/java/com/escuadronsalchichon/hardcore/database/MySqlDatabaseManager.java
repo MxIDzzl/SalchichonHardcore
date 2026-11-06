@@ -969,7 +969,8 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 """)) {
             MySqlJdbcValues.bindValue(statement, 1, uuid);
             statement.setString(2, textureHash.toLowerCase(java.util.Locale.ROOT));
-            return statement.executeUpdate() == 1;
+            statement.executeUpdate();
+            return true;
         } catch (SQLException exception) {
             plugin.getLogger().warning("No se pudo actualizar la skin registrada para " + uuid + ".");
             return false;
