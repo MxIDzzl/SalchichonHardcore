@@ -64,6 +64,10 @@ Con PlaceholderAPI y la expansión registrada por el plugin:
 
 La configuración de temporada y zona horaria se administra desde `config.yml`.
 
+## Instalación
+
+Consulta [docs/INSTALLATION.md](docs/INSTALLATION.md) para la primera instalación con SQLite, dependencias opcionales y el procedimiento de staging antes de PostgreSQL.
+
 ## 🛠️ Construcción
 
 El proyecto utiliza Maven. Para generar el JAR:
