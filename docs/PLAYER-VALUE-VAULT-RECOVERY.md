@@ -1,5 +1,7 @@
 # Player Value Vault: recovery and transaction design
 
+> **Nota de arquitectura (2026-11-06):** Este archivo conserva notas históricas de diseño de una fase anterior. Las menciones a PostgreSQL, índices parciales, bloqueos y migraciones específicas de PostgreSQL no describen el backend actual y no deben usarse como instrucciones para MySQL. El backend activo predeterminado del plugin sigue siendo SQLite; MySQL es el destino de staging. Para el comportamiento implementado actualmente, consulta el código de `VaultInventoryService`, `VaultWithdrawalService`, `MySqlDatabaseManager` y las pruebas de integración MySQL. Player Value permanece desactivado por defecto hasta superar staging, pruebas de interrupciones y backup/restore.
+
 Status: design gate for the vault implementation. This document does not enable the feature or authorize a production cutover.
 
 ## Invariants
