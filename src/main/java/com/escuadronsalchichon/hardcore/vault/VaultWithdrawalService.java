@@ -138,7 +138,9 @@ public final class VaultWithdrawalService implements Listener {
             action = VaultClaimRecord.RecoveryAction.MANUAL_REVIEW;
         }
         if (action == VaultClaimRecord.RecoveryAction.DELIVER_PENDING) {
-            deliverPending(player, claim, () -> recoverNext(player, claims, index + 1));
+            // Keep the inventory lock for the entire recovery queue, not just
+            // this claim. recoverNext releases it after every claim is resolved.
+            deliverPending(player, claim, () -> recoverNext(player, claims, index + 1), false);
             return;
         }
         if (action == VaultClaimRecord.RecoveryAction.MANUAL_REVIEW) {
@@ -166,10 +168,15 @@ public final class VaultWithdrawalService implements Listener {
     }
 
     private void deliverPending(Player player, VaultClaimRecord claim) {
-        deliverPending(player, claim, () -> {});
+        deliverPending(player, claim, () -> {}, true);
     }
 
     private void deliverPending(Player player, VaultClaimRecord claim, Runnable afterSuccess) {
+        deliverPending(player, claim, afterSuccess, true);
+    }
+
+    private void deliverPending(Player player, VaultClaimRecord claim, Runnable afterSuccess,
+                                boolean releaseLockOnSuccess) {
         UUID uuid = player.getUniqueId();
         ItemStack item = deserialize(claim.payload());
         if (!validItem(item, claim.material(), claim.amount()) || !canFit(player, item) || !writeMarker(item, claim.claimId())) {
@@ -210,7 +217,7 @@ public final class VaultWithdrawalService implements Listener {
                         }
                         clearMarker(player, claim.claimId());
                         player.saveData();
-                        inventoryLocks.endExternalOperation(uuid);
+                        if (releaseLockOnSuccess) inventoryLocks.endExternalOperation(uuid);
                         player.sendMessage("§aRetiro completado: §f" + claim.amount() + " " + claim.material().toLowerCase(java.util.Locale.ROOT));
                         afterSuccess.run();
                     });
