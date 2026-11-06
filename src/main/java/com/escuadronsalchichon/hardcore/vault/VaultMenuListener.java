@@ -50,6 +50,9 @@ public final class VaultMenuListener implements Listener {
         int slot = event.getRawSlot();
         if (slot == 45 && holder.hasPrevious()) {
             openPage(player, holder.page() - 1);
+        } else if (slot == 47) {
+            player.closeInventory();
+            deposits.openDepositMenu(player);
         } else if (slot == 53 && holder.hasNext()) {
             openPage(player, holder.page() + 1);
         } else if (slot >= 0 && slot < holder.items().size()) {
