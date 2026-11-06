@@ -513,7 +513,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                             updated_at=UTC_TIMESTAMP(6)
                         """)) {
                     MySqlJdbcValues.bindValue(stats, 1, uuid); stats.setLong(2, value);
-                    if (stats.executeUpdate() != 1) throw new SQLException("No se pudo actualizar Player Value.");
+                    if (stats.executeUpdate() <= 0) throw new SQLException("No se pudo actualizar Player Value.");
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE vault_operations SET status='COMMITTED',updated_at=UTC_TIMESTAMP(6)
