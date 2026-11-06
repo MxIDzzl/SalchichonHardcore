@@ -38,20 +38,23 @@ Stop the server, revert the host configuration to the preserved SQLite database 
 
 - SQLite integrity check passes.
 - Every source row has a corresponding PostgreSQL row.
-- UUID, username, death date, totem count, audit action/reason/actor and timestamp match.
+- UUID, username, death date, totem count, official deaths, playtime, Player Value aggregate, skin texture hashes, stat-event history, and audit action/reason/actor/timestamp match.
 - No production cutover occurs until plugin code actually uses the PostgreSQL repository and the integration suite passes.
 
 ## Importer implementation status
 
-The code-level importer is `SqliteToPostgresImporter`. It is intentionally not called by plugin startup and does not change the active database. It requires the versioned PostgreSQL schema to have been applied manually to a fresh destination first.
+The code-level importer is `SqliteToPostgresImporter`. It is intentionally not called by plugin startup and does not change the active database. It requires the versioned PostgreSQL schema to have been initialized on a fresh destination first.
 
-The importer currently transfers only the legacy tables that exist in SQLite:
+The importer transfers and verifies row counts for:
 
 - `player_data`: UUID, username, nullable death date and totem count.
+- `player_stats`: official deaths, playtime ticks and Player Value aggregate.
+- `player_skins`: validated public texture hashes from SkinsRestorer.
+- `stat_events`: append-only official-stat history, preserving IDs and converting timestamps with the configured legacy timezone.
 - `admin_audit`: original audit ID, target UUID/name, administrator, action, reason and timestamp.
 
-The newer `player_stats` and `stat_events` tables are not populated by the legacy importer because the old SQLite database does not contain equivalent authoritative records. They remain empty until the official-statistics feature is implemented; do not infer historical deaths, playtime or Player Value from unrelated data.
+It refuses the entire import if any unsupported operational records exist in `player_value_items`, `vault_operations`, `vault_claims`, `vault_cooldowns`, `player_value_adjustments`, `trade_sessions`, `trade_escrow_items`, `trade_item_operations`, `trade_player_locks` or `operation_receipts`. This prevents a partial cutover from silently discarding serialized item payloads, recovery journals or legacy trade history. Those records require a dedicated migration and manual reconciliation before any cutover.
 
-The importer verifies source integrity and destination row counts and uses one PostgreSQL transaction. It deliberately refuses to import into non-empty destination tables. The source SQLite file is opened read-only. Timestamp strings that cannot be parsed as the legacy `LocalDateTime` representation cause a full rollback and require manual review.
+The importer verifies SQLite integrity and destination row counts inside one PostgreSQL transaction. The source SQLite file is opened read-only. Any malformed UUID, negative statistic, invalid skin hash, unparseable timestamp, unsupported operational data, or non-empty destination causes a full rollback. It never deletes or modifies the SQLite source.
 
-The importer is exposed through the console-only command `hardcore migrate-sqlite CONFIRM`. It is not run at startup. Run it only during maintenance, with a verified backup, no online players, a fresh PostgreSQL destination, and the plugin configured to use PostgreSQL. The command does not delete or modify the SQLite source. A successful import is not by itself permission to reopen the server; complete the integration tests and inspect the report first.
+The importer is exposed through the console-only command `hardcore migrate-sqlite CONFIRM`. It is not run at startup. Run it only during maintenance, with a verified backup, no online players, a fresh PostgreSQL destination, and the plugin configured to use PostgreSQL. A successful import is not by itself permission to reopen the server; complete the integration tests and inspect every reported row count first.
