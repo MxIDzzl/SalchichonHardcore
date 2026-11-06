@@ -38,17 +38,17 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. Aún faltan pruebas de integración contra la versión exacta de MySQL/MariaDB del proveedor y ensayos de recuperación; `database.mysql.enabled` debe permanecer en `false`.
+- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. CI ya ejecuta cuatro pruebas de integración contra MySQL 8.4 (esquema, UPSERT, unicidad de operaciones activas, rollback InnoDB y agregados de recuperación). Aún faltan pruebas de extremo a extremo de las operaciones reales de Player Value, validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones; `database.mysql.enabled` debe permanecer en `false`.
 - PostgreSQL: implementación heredada de una fase anterior; no es el destino de despliegue acordado. Déjalo desactivado.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
 ## Futuro cambio de SQLite a MySQL
 
-La instalación de producción debe continuar usando SQLite hasta completar el backend MySQL y validarlo en staging. No actives `database.mysql.enabled` todavía: el plugin se detendrá intencionalmente si detecta esa opción, para evitar que parezca que está usando MySQL cuando en realidad no lo hace.
+La instalación de producción debe continuar usando SQLite hasta completar el backend MySQL y validarlo en staging. No actives `database.mysql.enabled` todavía: el arranque sigue bloqueado intencionalmente hasta cerrar las pruebas de extremo a extremo y staging. Esto evita un cambio accidental de backend.
 
 Antes del cambio deberán estar terminados y probados:
 1. Confirmar que la versión MySQL/MariaDB del proveedor admite el DDL usado (checks, columnas generadas e índices).
-2. Validar el adaptador `PlayerDataStore` con pruebas de integración reales, especialmente transacciones de Player Value, auditoría y recuperación.
+2. Completar pruebas de extremo a extremo del adaptador `PlayerDataStore`, especialmente depósitos/retiros reales de Player Value, auditoría y recuperación. Las pruebas base de MySQL 8.4 ya corren en CI.
 3. Ejecutar el importador SQLite→MySQL en una copia de staging: integridad del origen, destino vacío, conteos, rollback y preservación de IDs.
 4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
 5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
