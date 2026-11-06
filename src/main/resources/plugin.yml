@@ -8,14 +8,12 @@ description: Sistema hardcore diario para Escuadron Salchichon.
 softdepend:
   - PlaceholderAPI
   - SkinsRestorer
+  - zMClans
 
 commands:
   value:
     description: Abre tu almacén personal Player Value
     usage: /value [página] | /value deposit
-  trade:
-    description: Intercambio seguro de objetos entre jugadores
-    usage: /trade <jugador|accept|deny|offer|confirm|status|cancel>
   hardcore:
     description: Comandos administrativos de SalchichonHardcore
     usage: /hardcore <check|restore|reset|stat|vault-status|reload|migrate-sqlite>
