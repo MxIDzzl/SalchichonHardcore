@@ -238,11 +238,7 @@ public final class VaultWithdrawalService implements Listener {
     }
 
     private boolean canFit(Player player, ItemStack item) {
-        int emptySlots = 0;
-        for (ItemStack existing : player.getInventory().getStorageContents()) {
-            if (existing == null || existing.getType().isAir()) emptySlots++;
-        }
-        return emptySlots * item.getMaxStackSize() >= item.getAmount();
+        return VaultInventoryCapacity.canFit(item, player.getInventory().getStorageContents());
     }
 
     private boolean writeMarker(ItemStack item, UUID claimId) {
