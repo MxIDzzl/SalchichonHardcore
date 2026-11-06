@@ -17,7 +17,7 @@ Player Value is a personal item vault and prestige score. It is not currency.
 
 Deposits use a durable PREPARED journal and plugin-owned PDC operation marker before inventory removal. The stored item and aggregate score are committed transactionally. Withdrawals use durable claims and PDC markers; uncertain claims are quarantined rather than automatically delivered again. Inventory operations are locked while a deposit or recovery is unresolved.
 
-The plugin has a paginated vault viewer, a chest-style deposit selector, fingerprint checks against stale menu entries, independently journaled stack deposits, a withdrawal workflow, and conservative recovery logic. The deposit menu never holds player items in its temporary GUI inventory, so closing the menu or a server restart cannot discard staged GUI contents. These are implemented foundations, not a claim of exactly-once behavior under every possible crash. Full crash-injection integration tests against SQLite and PostgreSQL, staging validation, and backup/restore drills remain release gates. Keep `player-value.enabled: false` on the live server until those gates pass.
+The plugin has a paginated vault viewer, a chest-style deposit selector, fingerprint checks against stale menu entries, independently journaled stack deposits, a withdrawal workflow, and conservative recovery logic. The deposit menu never holds player items in its temporary GUI inventory, so closing the menu or a server restart cannot discard staged GUI contents. These are implemented foundations, not a claim of exactly-once behavior under every possible crash. Full crash-injection integration tests against SQLite and MySQL, staging validation, and backup/restore drills remain release gates. Keep `player-value.enabled: false` on the live server until those gates pass.
 
 ## PlaceholderAPI
 
@@ -39,7 +39,7 @@ Administrative changes made with `/hardcore stat <player> value <new_value> <rea
 
 ## Operations
 
-- PostgreSQL remains disabled by default.
+- `database.mysql.enabled` remains false by default in production; SQLite remains the active backend until staging is approved.
 - Keep the original SQLite database and backups.
 - Never manually edit vault rows to resolve an uncertain inventory operation.
 - Follow `PLAYER-VALUE-VAULT-RECOVERY.md` for evidence-based recovery.
