@@ -38,7 +38,7 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. La suite contiene nueve pruebas de integración SQL (esquema/UPSERT/rollback, operaciones de Player Value e importación SQLite real); CI está ampliándose para ejecutarlas tanto contra MySQL 8.4 como MariaDB 11.4. Hasta que ambas matrices terminen correctamente, no se debe asumir compatibilidad con MariaDB. Al iniciar con MySQL habilitado, el plugin registra el producto y versión exactos del motor en la consola (`Motor SQL detectado: ...`), sin exponer credenciales. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. `database.mysql.enabled` debe permanecer en `false` en producción.
+- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. La suite contiene nueve pruebas de integración SQL (esquema/UPSERT/rollback, operaciones de Player Value e importación SQLite real); CI ejecuta las 50 pruebas contra MySQL 8.4 y MariaDB 11.4; ambas matrices pasaron en el commit validado más reciente. Al iniciar con MySQL habilitado, el plugin registra el producto y versión exactos del motor en la consola (`Motor SQL detectado: ...`), sin exponer credenciales. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. `database.mysql.enabled` debe permanecer en `false` en producción.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
 ## Futuro cambio de SQLite a MySQL
@@ -47,7 +47,7 @@ La instalación de producción debe continuar usando SQLite hasta completar stag
 
 Antes del cambio deberán estar terminados y probados:
 1. Obtener la versión exacta desde el log privado `Motor SQL detectado: ...` en una conexión de staging; el prefijo `jdbc:mysql://` por sí solo no identifica si el servidor es MySQL o MariaDB. Verificar el DDL contra esa versión.
-2. Confirmar que las pruebas de CI del adaptador y del importador SQLite→MySQL siguen pasando en el commit que se vaya a desplegar.
+2. Confirmar que las matrices CI de MySQL 8.4 y MariaDB 11.4 del commit que se vaya a desplegar siguen pasando (50 pruebas en cada motor).
 3. En staging, activar `database.mysql.enabled: true` con una base vacía. Si se migran datos, respaldar `hardcore.db`, activar también `database.mysql.import-sqlite-on-startup: true` durante un solo arranque y dejar que el importador valide integridad, destino vacío, conteos e IDs. Tras una importación correcta, volver esa opción a `false`.
 4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
 5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
