@@ -4,9 +4,9 @@ settings:
   timezone: "America/Mexico_City"
   daily-reset: "00:00"
 
-# PostgreSQL queda preparado pero DESACTIVADO.
-# El plugin seguirá usando hardcore.db hasta completar y verificar el importador.
-# Define SALCHICHON_DB_USER y SALCHICHON_DB_PASSWORD en el entorno del servidor.
+# MySQL está en preparación, pero aún NO es un backend completo. Mantén enabled: false.
+# Si se activa antes de terminar la migración, el plugin se detendrá por seguridad.
+# SQLite (hardcore.db) sigue siendo el backend activo. No borres ni reemplaces ese archivo.
 database:
   mysql:
     enabled: false
