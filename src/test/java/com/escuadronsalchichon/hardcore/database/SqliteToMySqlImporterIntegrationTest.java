@@ -75,6 +75,16 @@ class SqliteToMySqlImporterIntegrationTest {
                     assertEquals(1, count(destination, "stat_events"));
                     assertEquals(1, count(destination, "admin_audit"));
                     try (Statement query = destination.createStatement();
+                         ResultSet row = query.executeQuery("SELECT id FROM stat_events LIMIT 1")) {
+                        assertTrue(row.next());
+                        assertEquals(7L, row.getLong(1), "stat event IDs must be preserved");
+                    }
+                    try (Statement query = destination.createStatement();
+                         ResultSet row = query.executeQuery("SELECT id FROM admin_audit LIMIT 1")) {
+                        assertTrue(row.next());
+                        assertEquals(11L, row.getLong(1), "audit IDs must be preserved");
+                    }
+                    try (Statement query = destination.createStatement();
                          ResultSet row = query.executeQuery("SELECT player_value FROM player_stats LIMIT 1")) {
                         assertTrue(row.next());
                         assertEquals(99L, row.getLong(1));
