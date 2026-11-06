@@ -23,20 +23,6 @@ database:
       connection-timeout-ms: 10000
       validation-timeout-ms: 5000
       max-lifetime-ms: 1800000
-  # Backend heredado; no es el destino de despliegue acordado.
-  postgresql:
-    enabled: false
-    host: "127.0.0.1"
-    port: 5432
-    database: "salchichon"
-    username-env: "SALCHICHON_DB_USER"
-    password-env: "SALCHICHON_DB_PASSWORD"
-    pool:
-      maximum-size: 8
-      minimum-idle: 2
-      connection-timeout-ms: 10000
-      validation-timeout-ms: 5000
-      max-lifetime-ms: 1800000
 
 # Player Value tiene visor, depósitos y retiros con journal/PDC y recuperación conservadora.
 # Sigue desactivado hasta completar pruebas de integración con fallos, staging y backup/restore.
