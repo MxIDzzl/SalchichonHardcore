@@ -50,7 +50,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             new MySqlSchemaManager(plugin, pool).initialize();
             return true;
         } catch (SQLException exception) {
-            plugin.getLogger().severe("No se pudo inicializar el esquema PostgreSQL.");
+            plugin.getLogger().severe("No se pudo inicializar el esquema MySQL.");
             exception.printStackTrace();
             return false;
         }
@@ -477,14 +477,26 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     insert.setInt(4, amount); insert.setBytes(5, payload); insert.setLong(6, value);
                     MySqlJdbcValues.bindValue(insert, 7, created); insert.executeUpdate();
                 }
+                long currentValue = 0L;
+                try (PreparedStatement current = connection.prepareStatement(
+                        "SELECT player_value FROM player_stats WHERE player_uuid=? FOR UPDATE")) {
+                    MySqlJdbcValues.bindValue(current, 1, uuid);
+                    try (ResultSet row = current.executeQuery()) {
+                        if (row.next()) currentValue = row.getLong(1);
+                    }
+                }
+                try {
+                    Math.addExact(currentValue, value);
+                } catch (ArithmeticException overflow) {
+                    throw new SQLException("El Player Value excedería el límite BIGINT.", overflow);
+                }
                 try (PreparedStatement stats = connection.prepareStatement("""
                         INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
                         ON DUPLICATE KEY UPDATE player_value=player_stats.player_value+VALUES(player_value),
-                        updated_at=now()
-                        WHERE player_stats.player_value <= 9223372036854775807 - VALUES(player_value)
+                            updated_at=now()
                         """)) {
                     MySqlJdbcValues.bindValue(stats, 1, uuid); stats.setLong(2, value);
-                    if (stats.executeUpdate() != 1) throw new SQLException("El Player Value excedería el límite BIGINT.");
+                    if (stats.executeUpdate() != 1) throw new SQLException("No se pudo actualizar Player Value.");
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE vault_operations SET status='COMMITTED',updated_at=now()
@@ -841,11 +853,16 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 try (PreparedStatement update = c.prepareStatement("""
                         UPDATE vault_claims SET status='DELIVERED', delivered_at=now()
                         WHERE claim_id=? AND player_uuid=? AND status IN ('DELIVERING','RECOVERY_REQUIRED')
-                        
                         """)) {
                     MySqlJdbcValues.bindValue(update, 1, claimId);
                     MySqlJdbcValues.bindValue(update, 2, playerUuid);
-                    try (ResultSet result = update.executeQuery()) {
+                    if (update.executeUpdate() != 1) { c.rollback(); return false; }
+                }
+                try (PreparedStatement lookup = c.prepareStatement(
+                        "SELECT operation_id FROM vault_claims WHERE claim_id=? AND player_uuid=?")) {
+                    MySqlJdbcValues.bindValue(lookup, 1, claimId);
+                    MySqlJdbcValues.bindValue(lookup, 2, playerUuid);
+                    try (ResultSet result = lookup.executeQuery()) {
                         if (!result.next()) { c.rollback(); return false; }
                         operationId = MySqlJdbcValues.readUuid(result, 1);
                     }
