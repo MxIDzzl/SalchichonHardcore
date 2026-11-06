@@ -4,14 +4,15 @@ settings:
   timezone: "America/Mexico_City"
   daily-reset: "00:00"
 
-# MySQL está en preparación, pero aún NO es un backend completo. Mantén enabled: false.
-# Si se activa antes de terminar la migración, el plugin se detendrá por seguridad.
-# SQLite (hardcore.db) sigue siendo el backend activo. No borres ni reemplaces ese archivo.
+# MySQL está cableado y disponible para pruebas controladas/staging.
+# Mantén enabled: false en producción hasta validar la versión del hosting,
+# importación de una copia SQLite, recuperación y backup/restore.
+# SQLite (hardcore.db) sigue siendo el backend predeterminado. No borres ese archivo.
 database:
   mysql:
     enabled: false
     # One-time migration only: enable after backing up hardcore.db and using an empty MySQL schema.
-    # Turn it back off after a successful import; the importer refuses a non-empty destination.
+    # The importer validates the source and destination; after success this flag resets to false.
     import-sqlite-on-startup: false
     jdbc-url: "jdbc:mysql://127.0.0.1:3306/salchichon?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
     username-env: "SALCHICHON_MYSQL_USER"
@@ -22,6 +23,7 @@ database:
       connection-timeout-ms: 10000
       validation-timeout-ms: 5000
       max-lifetime-ms: 1800000
+  # Backend heredado; no es el destino de despliegue acordado.
   postgresql:
     enabled: false
     host: "127.0.0.1"
