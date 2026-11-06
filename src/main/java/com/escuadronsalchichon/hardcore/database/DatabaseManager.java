@@ -254,6 +254,44 @@ public class DatabaseManager implements PlayerDataStore {
                     )
                     """);
             statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS public_clans (
+                        clan_uuid TEXT PRIMARY KEY,
+                        name TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        description TEXT NOT NULL DEFAULT '',
+                        leader_uuid TEXT NOT NULL,
+                        created_at TEXT NOT NULL,
+                        member_count INTEGER NOT NULL CHECK (member_count >= 0),
+                        max_members INTEGER NOT NULL CHECK (max_members >= 0),
+                        points INTEGER NOT NULL CHECK (points >= 0),
+                        level INTEGER NOT NULL CHECK (level >= 0),
+                        kills INTEGER NOT NULL CHECK (kills >= 0),
+                        deaths INTEGER NOT NULL CHECK (deaths >= 0),
+                        kdr REAL NOT NULL CHECK (kdr >= 0),
+                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_public_clans_points
+                    ON public_clans(points DESC, clan_uuid)
+                    """);
+            statement.executeUpdate("""
+                    CREATE TABLE IF NOT EXISTS player_clan_memberships (
+                        player_uuid TEXT PRIMARY KEY,
+                        clan_uuid TEXT NOT NULL REFERENCES public_clans(clan_uuid) ON DELETE CASCADE,
+                        rank_id TEXT NOT NULL,
+                        joined_at TEXT NOT NULL,
+                        kills INTEGER NOT NULL CHECK (kills >= 0),
+                        deaths INTEGER NOT NULL CHECK (deaths >= 0),
+                        kdr REAL NOT NULL CHECK (kdr >= 0),
+                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    )
+                    """);
+            statement.executeUpdate("""
+                    CREATE INDEX IF NOT EXISTS idx_player_clan_memberships_clan
+                    ON player_clan_memberships(clan_uuid, rank_id, player_uuid)
+                    """);
+            statement.executeUpdate("""
                     CREATE TABLE IF NOT EXISTS player_value_adjustments (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         player_uuid TEXT NOT NULL,
@@ -2178,6 +2216,70 @@ public class DatabaseManager implements PlayerDataStore {
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo finalizar la expiración del intercambio.");
             return false;
+        }
+    }
+
+
+    @Override
+    public synchronized boolean replaceClanDirectory(
+            java.util.List<ClanRecord> clans, java.util.List<ClanMemberRecord> members) {
+        if (!isConnected() || clans == null || members == null) return false;
+        try {
+            connection.setAutoCommit(false);
+            try (var deleteMembers = connection.prepareStatement("DELETE FROM player_clan_memberships");
+                 var deleteClans = connection.prepareStatement("DELETE FROM public_clans")) {
+                deleteMembers.executeUpdate();
+                deleteClans.executeUpdate();
+            }
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO public_clans
+                        (clan_uuid,name,tag,description,leader_uuid,created_at,member_count,max_members,
+                         points,level,kills,deaths,kdr)
+                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+                    """)) {
+                for (ClanRecord clan : clans) {
+                    insert.setString(1, clan.clanId().toString());
+                    insert.setString(2, clan.name());
+                    insert.setString(3, clan.tag());
+                    insert.setString(4, clan.description());
+                    insert.setString(5, clan.leaderUuid().toString());
+                    insert.setString(6, clan.createdAt().toString());
+                    insert.setInt(7, clan.memberCount());
+                    insert.setInt(8, clan.maxMembers());
+                    insert.setLong(9, clan.points());
+                    insert.setInt(10, clan.level());
+                    insert.setLong(11, clan.kills());
+                    insert.setLong(12, clan.deaths());
+                    insert.setDouble(13, clan.kdr());
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO player_clan_memberships
+                        (player_uuid,clan_uuid,rank_id,joined_at,kills,deaths,kdr)
+                    VALUES (?,?,?,?,?,?,?)
+                    """)) {
+                for (ClanMemberRecord member : members) {
+                    insert.setString(1, member.playerUuid().toString());
+                    insert.setString(2, member.clanUuid().toString());
+                    insert.setString(3, member.rankId());
+                    insert.setString(4, member.joinedAt().toString());
+                    insert.setLong(5, member.kills());
+                    insert.setLong(6, member.deaths());
+                    insert.setDouble(7, member.kdr());
+                    insert.addBatch();
+                }
+                insert.executeBatch();
+            }
+            connection.commit();
+            return true;
+        } catch (SQLException | RuntimeException exception) {
+            try { connection.rollback(); } catch (SQLException rollback) { exception.addSuppressed(rollback); }
+            plugin.getLogger().warning("No se pudo actualizar la proyección pública de zMClans; se conserva el último snapshot válido.");
+            return false;
+        } finally {
+            try { connection.setAutoCommit(true); } catch (SQLException ignored) { }
         }
     }
 
