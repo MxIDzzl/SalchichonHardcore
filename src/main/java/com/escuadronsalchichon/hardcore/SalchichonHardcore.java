@@ -78,6 +78,8 @@ public class SalchichonHardcore extends JavaPlugin {
                         + report.skinsImported() + " skins, "
                         + report.statEventsImported() + " eventos y "
                         + report.auditRowsImported() + " auditorías.");
+                getConfig().set("database.mysql.import-sqlite-on-startup", false);
+                saveConfig();
             } catch (SQLException exception) {
                 getLogger().severe("Falló la importación SQLite→MySQL. Se conservará SQLite y el plugin se desactivará.");
                 getLogger().severe(exception.getMessage());
