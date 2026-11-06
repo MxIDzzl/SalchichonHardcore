@@ -317,8 +317,8 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement stats = connection.prepareStatement("""
                         INSERT INTO player_stats(player_uuid, official_deaths, updated_at)
-                        VALUES (?, 1, now())
-                        ON DUPLICATE KEY UPDATE official_deaths = player_stats.official_deaths + 1, updated_at = now()
+                        VALUES (?, 1, UTC_TIMESTAMP(6))
+                        ON DUPLICATE KEY UPDATE official_deaths = player_stats.official_deaths + 1, updated_at = UTC_TIMESTAMP(6)
                         """)) { MySqlJdbcValues.bindValue(stats, 1, uuid); stats.executeUpdate(); }
                 try (PreparedStatement event = connection.prepareStatement("""
                         INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
@@ -348,8 +348,8 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                         """)) { MySqlJdbcValues.bindValue(player, 1, uuid); player.setString(2, username); player.executeUpdate(); }
                 try (PreparedStatement stats = connection.prepareStatement("""
                         INSERT INTO player_stats(player_uuid, playtime_ticks, updated_at)
-                        VALUES (?, ?, now())
-                        ON DUPLICATE KEY UPDATE playtime_ticks = player_stats.playtime_ticks + VALUES(playtime_ticks), updated_at = now()
+                        VALUES (?, ?, UTC_TIMESTAMP(6))
+                        ON DUPLICATE KEY UPDATE playtime_ticks = player_stats.playtime_ticks + VALUES(playtime_ticks), updated_at = UTC_TIMESTAMP(6)
                         """)) { MySqlJdbcValues.bindValue(stats, 1, uuid); stats.setLong(2, ticks); stats.executeUpdate(); }
                 connection.commit(); return true;
             } catch (SQLException exception) { connection.rollback(); throw exception; }
@@ -384,10 +384,10 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement upsert = connection.prepareStatement("""
                         INSERT INTO player_stats(player_uuid, official_deaths, playtime_ticks, player_value, updated_at)
-                        VALUES (?, 0, 0, 0, now())
+                        VALUES (?, 0, 0, 0, UTC_TIMESTAMP(6))
                         ON DUPLICATE KEY UPDATE player_uuid=VALUES(player_uuid)
                         """)) { MySqlJdbcValues.bindValue(upsert, 1, uuid); upsert.executeUpdate(); }
-                try (PreparedStatement update = connection.prepareStatement("UPDATE player_stats SET " + column + " = ?, updated_at = now() WHERE player_uuid = ?")) {
+                try (PreparedStatement update = connection.prepareStatement("UPDATE player_stats SET " + column + " = ?, updated_at = UTC_TIMESTAMP(6) WHERE player_uuid = ?")) {
                     update.setLong(1, value); MySqlJdbcValues.bindValue(update, 2, uuid);
                     if (update.executeUpdate() != 1) throw new SQLException("No se actualizó la estadística.");
                 }
@@ -508,15 +508,15 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     throw new SQLException("El Player Value excedería el límite BIGINT.", overflow);
                 }
                 try (PreparedStatement stats = connection.prepareStatement("""
-                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,UTC_TIMESTAMP(6))
                         ON DUPLICATE KEY UPDATE player_value=player_stats.player_value+VALUES(player_value),
-                            updated_at=now()
+                            updated_at=UTC_TIMESTAMP(6)
                         """)) {
                     MySqlJdbcValues.bindValue(stats, 1, uuid); stats.setLong(2, value);
                     if (stats.executeUpdate() != 1) throw new SQLException("No se pudo actualizar Player Value.");
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
-                        UPDATE vault_operations SET status='COMMITTED',updated_at=now()
+                        UPDATE vault_operations SET status='COMMITTED',updated_at=UTC_TIMESTAMP(6)
                         WHERE operation_id=? AND player_uuid=? AND status='DELIVERY_PENDING'
                         """)) {
                     MySqlJdbcValues.bindValue(update, 1, operationId); MySqlJdbcValues.bindValue(update, 2, uuid);
@@ -567,7 +567,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || uuid == null || operationId == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement update = connection.prepareStatement("""
-                     UPDATE vault_operations SET status='DELIVERY_PENDING',updated_at=now()
+                     UPDATE vault_operations SET status='DELIVERY_PENDING',updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
                      """)) {
             MySqlJdbcValues.bindValue(update, 1, operationId);
@@ -585,7 +585,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || uuid == null || operationId == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement update = connection.prepareStatement("""
-                     UPDATE vault_operations SET status='CANCELLED',updated_at=now()
+                     UPDATE vault_operations SET status='CANCELLED',updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
                        AND status IN ('PREPARED','RECOVERY_REQUIRED')
                      """)) {
@@ -638,9 +638,9 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     MySqlJdbcValues.bindValue(insert, 7, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC"))); insert.executeUpdate();
                 }
                 try (PreparedStatement stats = connection.prepareStatement("""
-                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,UTC_TIMESTAMP(6))
                         ON DUPLICATE KEY UPDATE player_value=player_stats.player_value+VALUES(player_value),
-                        updated_at=now()
+                        updated_at=UTC_TIMESTAMP(6)
                         """)) {
                     MySqlJdbcValues.bindValue(stats, 1, uuid); stats.setLong(2, item.creditedValue()); stats.executeUpdate();
                 }
@@ -781,7 +781,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     }
                 }
                 try (PreparedStatement update = connection.prepareStatement(
-                        "UPDATE player_stats SET player_value=player_value-?,updated_at=now() WHERE player_uuid=? AND player_value>=?")) {
+                        "UPDATE player_stats SET player_value=player_value-?,updated_at=UTC_TIMESTAMP(6) WHERE player_uuid=? AND player_value>=?")) {
                     update.setLong(1, value);
                     MySqlJdbcValues.bindValue(update, 2, uuid);
                     update.setLong(3, value);
@@ -868,7 +868,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             try {
                 UUID operationId;
                 try (PreparedStatement update = c.prepareStatement("""
-                        UPDATE vault_claims SET status='DELIVERED', delivered_at=now()
+                        UPDATE vault_claims SET status='DELIVERED', delivered_at=UTC_TIMESTAMP(6)
                         WHERE claim_id=? AND player_uuid=? AND status IN ('DELIVERING','RECOVERY_REQUIRED')
                         """)) {
                     MySqlJdbcValues.bindValue(update, 1, claimId);
@@ -885,7 +885,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     }
                 }
                 try (PreparedStatement operation = c.prepareStatement("""
-                        UPDATE vault_operations SET status='DELIVERED', updated_at=now()
+                        UPDATE vault_operations SET status='DELIVERED', updated_at=UTC_TIMESTAMP(6)
                         WHERE operation_id=? AND status IN ('DELIVERY_PENDING','RECOVERY_REQUIRED')
                         """)) {
                     MySqlJdbcValues.bindValue(operation, 1, operationId);
@@ -962,10 +962,10 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO player_skins(player_uuid,texture_hash,updated_at)
-                VALUES (?,?,now())
+                VALUES (?,?,UTC_TIMESTAMP(6))
                 ON DUPLICATE KEY UPDATE
                     texture_hash=VALUES(texture_hash),
-                    updated_at=now()
+                    updated_at=UTC_TIMESTAMP(6)
                 """)) {
             MySqlJdbcValues.bindValue(statement, 1, uuid);
             statement.setString(2, textureHash.toLowerCase(java.util.Locale.ROOT));
@@ -1012,13 +1012,13 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     changed = claims.executeUpdate();
                 }
                 try (PreparedStatement operations = connection.prepareStatement(
-                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=UTC_TIMESTAMP(6) WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
                     operations.executeUpdate();
                 }
                 // A PREPARED deposit may have stopped before or after inventory
                 // mutation. Quarantine it until an inventory-aware recovery can prove its state.
                 try (PreparedStatement deposits = connection.prepareStatement(
-                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE operation_type='DEPOSIT' AND status='PREPARED'")) {
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=UTC_TIMESTAMP(6) WHERE operation_type='DEPOSIT' AND status='PREPARED'")) {
                     changed += deposits.executeUpdate();
                 }
                 connection.commit();
@@ -1194,7 +1194,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE trade_sessions SET revision=?,confirmed_revision_a=NULL,
-                            confirmed_revision_b=NULL,updated_at=now()
+                            confirmed_revision_b=NULL,updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND revision=? AND status='OPEN'
                         """)) {
                     update.setLong(1, Math.addExact(revision, 1));
@@ -1235,7 +1235,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement updateSession = connection.prepareStatement("""
                         UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
-                            confirmed_revision_b=NULL,updated_at=now()
+                            confirmed_revision_b=NULL,updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='OPEN' AND revision=?
                           AND (player_a=? OR player_b=?)
                         """)) {
@@ -1246,7 +1246,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                     if (updateSession.executeUpdate() != 1) { connection.rollback(); return false; }
                 }
                 try (PreparedStatement updateItem = connection.prepareStatement("""
-                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=now()
+                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=UTC_TIMESTAMP(6)
                         WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'
                         """)) {
                     MySqlJdbcValues.bindValue(updateItem, 1, operationId);
@@ -1272,7 +1272,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || operationId == null || ownerUuid == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE trade_item_operations SET status='RETURNED',updated_at=now()
+                     UPDATE trade_item_operations SET status='RETURNED',updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND owner_uuid=? AND status IN ('RETURN_PENDING','RETURNED')
                      """)) {
             MySqlJdbcValues.bindValue(statement, 1, operationId);
@@ -1289,7 +1289,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || operationId == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE trade_item_operations SET status='ESCROWED',updated_at=now()
+                     UPDATE trade_item_operations SET status='ESCROWED',updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND status IN ('PREPARED','ESCROWED')
                      """)) {
             MySqlJdbcValues.bindValue(statement, 1, operationId);
@@ -1306,7 +1306,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
-                         confirmed_revision_b=NULL,updated_at=now()
+                         confirmed_revision_b=NULL,updated_at=UTC_TIMESTAMP(6)
                      WHERE trade_id=? AND status='OPEN' AND revision=?
                        AND (player_a=? OR player_b=?)
                      """)) {
@@ -1329,7 +1329,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                      UPDATE trade_sessions SET
                          confirmed_revision_a=CASE WHEN player_a=? THEN revision ELSE confirmed_revision_a END,
                          confirmed_revision_b=CASE WHEN player_b=? THEN revision ELSE confirmed_revision_b END,
-                         updated_at=now()
+                         updated_at=UTC_TIMESTAMP(6)
                      WHERE trade_id=? AND status='OPEN' AND revision=? AND (player_a=? OR player_b=?)
                      """)) {
             MySqlJdbcValues.bindValue(statement, 1, actor);
@@ -1353,7 +1353,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             try {
                 int changed;
                 try (PreparedStatement update = connection.prepareStatement("""
-                        UPDATE trade_sessions SET status='LOCKED',updated_at=now()
+                        UPDATE trade_sessions SET status='LOCKED',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='OPEN' AND revision=?
                           AND confirmed_revision_a=revision AND confirmed_revision_b=revision
                           AND EXISTS (SELECT 1 FROM trade_item_operations o
@@ -1367,7 +1367,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 if (changed != 1) { connection.rollback(); return false; }
                 try (PreparedStatement updateItems = connection.prepareStatement("""
-                        UPDATE trade_item_operations SET status='DELIVERY_PENDING',updated_at=now()
+                        UPDATE trade_item_operations SET status='DELIVERY_PENDING',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='ESCROWED'
                         """)) {
                     MySqlJdbcValues.bindValue(updateItems, 1, tradeId);
@@ -1392,7 +1392,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || operationId == null || recipientUuid == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE trade_item_operations SET status='DELIVERING',updated_at=now()
+                     UPDATE trade_item_operations SET status='DELIVERING',updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERY_PENDING'
                        AND EXISTS (SELECT 1 FROM trade_sessions t
                                    WHERE t.trade_id=trade_item_operations.trade_id AND t.status='LOCKED')
@@ -1411,7 +1411,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected() || operationId == null || recipientUuid == null) return false;
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     UPDATE trade_item_operations SET status='DELIVERED',delivered_at=now(),updated_at=now()
+                     UPDATE trade_item_operations SET status='DELIVERED',delivered_at=UTC_TIMESTAMP(6),updated_at=UTC_TIMESTAMP(6)
                      WHERE operation_id=? AND recipient_uuid=? AND status IN ('DELIVERING','DELIVERED')
                      """)) {
             MySqlJdbcValues.bindValue(statement, 1, operationId);
@@ -1430,14 +1430,14 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement update = connection.prepareStatement("""
-                        UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=now()
+                        UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status IN ('OPEN','LOCKED')
                         """)) {
                     MySqlJdbcValues.bindValue(update, 1, tradeId);
                     if (update.executeUpdate() != 1) { connection.rollback(); return false; }
                 }
                 try (PreparedStatement updateItems = connection.prepareStatement("""
-                        UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=now()
+                        UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','RETURN_PENDING','DELIVERY_PENDING','DELIVERING')
                         """)) {
                     MySqlJdbcValues.bindValue(updateItems, 1, tradeId);
@@ -1464,7 +1464,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement statement = connection.prepareStatement("""
-                        UPDATE trade_sessions SET status='COMMITTED',updated_at=now()
+                        UPDATE trade_sessions SET status='COMMITTED',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED','COMMITTED')
                           AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
                           AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
@@ -1499,7 +1499,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             connection.setAutoCommit(false);
             try {
                 try (PreparedStatement update = connection.prepareStatement("""
-                        UPDATE trade_sessions SET status='CANCELLED',updated_at=now()
+                        UPDATE trade_sessions SET status='CANCELLED',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='OPEN' AND (player_a=? OR player_b=?)
                           AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
                                           WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'RETURNED')
@@ -1551,11 +1551,11 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                 }
                 try (PreparedStatement update = connection.prepareStatement("""
                         UPDATE trade_sessions SET status='EXPIRED',revision=revision+1,
-                            confirmed_revision_a=NULL,confirmed_revision_b=NULL,updated_at=now()
+                            confirmed_revision_a=NULL,confirmed_revision_b=NULL,updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='OPEN'
                         """);
                      PreparedStatement returns = connection.prepareStatement("""
-                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=now()
+                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=UTC_TIMESTAMP(6)
                         WHERE trade_id=? AND status='ESCROWED'
                         """);
                      PreparedStatement release = connection.prepareStatement("""
@@ -1646,7 +1646,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                             leader_uuid=VALUES(leader_uuid), created_at=VALUES(created_at),
                             member_count=VALUES(member_count), max_members=VALUES(max_members),
                             points=VALUES(points), level=VALUES(level), kills=VALUES(kills),
-                            deaths=VALUES(deaths), kdr=VALUES(kdr), is_active=TRUE, synced_at=now()
+                            deaths=VALUES(deaths), kdr=VALUES(kdr), is_active=TRUE, synced_at=UTC_TIMESTAMP(6)
                         """)) {
                     for (ClanRecord clan : clans) {
                         MySqlJdbcValues.bindValue(insert, 1, clan.clanId());
@@ -1674,7 +1674,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                             clan_uuid=VALUES(clan_uuid), rank_id=VALUES(rank_id),
                             joined_at=VALUES(joined_at), kills=VALUES(kills),
                             deaths=VALUES(deaths), kdr=VALUES(kdr), is_active=TRUE,
-                            synced_at=now()
+                            synced_at=UTC_TIMESTAMP(6)
                         """)) {
                     for (ClanMemberRecord member : members) {
                         MySqlJdbcValues.bindValue(insert, 1, member.playerUuid());
