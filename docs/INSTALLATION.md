@@ -17,6 +17,21 @@
 7. Comprueba /hardcore check para un jugador y los placeholders si PlaceholderAPI está instalado.
 8. Si zMClans está activo, el plugin toma un snapshot público y lo sincroniza cada cinco minutos. No administra clanes ni altera sus datos.
 
+## Progresión de dificultad visible
+
+La progresión se configura en `config.yml` bajo `season.difficulty-stages`. Cada clave es el primer día de temporada en que entra la etapa:
+
+```yaml
+season:
+  difficulty: "HARD"
+  difficulty-stages:
+    "1": "HARD"
+    "14": "HARD+"
+    "28": "EXTREME"
+```
+
+Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=1:HARD,14:HARD+,28:EXTREME` y configura la misma fecha de inicio. Esto actualiza el placeholder `%salchichonhardcore_difficulty%` y la dificultad publicada en la web; no modifica mobs ni sus atributos.
+
 ## Estado de funciones en esta primera instalación
 - Hardcore diario, estadísticas oficiales y sincronización de tiempo de juego: activables con SQLite.
 - Skins: se guarda el hash público de textura que expone SkinsRestorer.
