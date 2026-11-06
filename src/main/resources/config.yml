@@ -39,6 +39,7 @@ season:
   name: "UHC SEASON 1"
   start-date: "2026-10-19"
   difficulty: "HARD"
+  difficulty-stages: {}
 
 messages:
   no-permission: "&cNo tienes permiso para utilizar este comando."
