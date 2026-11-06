@@ -124,6 +124,9 @@ public interface PlayerDataStore {
 
     boolean updatePlayerSkin(UUID uuid, String textureHash);
 
+    /** Atomically replaces the public clan snapshot imported from zMClans. */
+    boolean replaceClanDirectory(java.util.List<ClanRecord> clans, java.util.List<ClanMemberRecord> members);
+
     VaultRecoverySummary getVaultRecoverySummary();
 
     int flagUncertainVaultOperations();
