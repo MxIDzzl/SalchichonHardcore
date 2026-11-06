@@ -66,7 +66,7 @@ class SqliteToMySqlImporterIntegrationTest {
                 assertEquals(1, report.statsImported());
                 assertEquals(1, report.skinsImported());
                 assertEquals(1, report.statEventsImported());
-                assertEquals(1, report.auditImported());
+                assertEquals(1, report.auditRowsImported());
 
                 try (Connection destination = pool.getConnection()) {
                     assertEquals(1, count(destination, "player_data"));
