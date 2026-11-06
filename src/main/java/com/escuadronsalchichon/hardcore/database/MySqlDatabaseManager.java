@@ -853,7 +853,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             MySqlJdbcValues.bindValue(statement, 1, claimId);
             MySqlJdbcValues.bindValue(statement, 2, playerUuid);
             MySqlJdbcValues.bindValue(statement, 3, playerUuid);
-            return statement.executeUpdate() >= 0;
+            return statement.executeUpdate() == 1;
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo iniciar la entrega del retiro.");
             return false;
