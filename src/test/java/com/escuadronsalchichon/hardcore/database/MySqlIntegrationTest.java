@@ -1,0 +1,159 @@
+package com.escuadronsalchichon.hardcore.database;
+
+import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Test;
+import org.testcontainers.containers.MySQLContainer;
+import org.testcontainers.junit.jupiter.Container;
+import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.UUID;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@Testcontainers(disabledWithoutDocker = true)
+class MySqlIntegrationTest {
+
+    @Container
+    private static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
+            .withDatabaseName("salchichon")
+            .withUsername("salchichon")
+            .withPassword("test-password");
+
+    @BeforeAll
+    static void initializeSchema() throws SQLException, IOException {
+        String schema;
+        try (var stream = MySqlIntegrationTest.class.getResourceAsStream("/db/mysql/schema-v1.sql")) {
+            assertNotNull(stream, "MySQL schema resource must be packaged");
+            schema = new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+        }
+        try (Connection connection = connection(); Statement statement = connection.createStatement()) {
+            for (String part : schema.split(";")) {
+                String sql = part.lines()
+                        .filter(line -> !line.stripLeading().startsWith("--"))
+                        .reduce("", (left, right) -> left + right + "\n")
+                        .trim();
+                if (!sql.isEmpty()) statement.execute(sql);
+            }
+        }
+    }
+
+    @Test
+    void mysqlSchemaSupportsPlayerValueUpserts() throws SQLException {
+        UUID player = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertPlayer(connection, player);
+            try (var insert = connection.prepareStatement("""
+                    INSERT INTO player_stats(player_uuid, player_value, updated_at)
+                    VALUES (?, ?, UTC_TIMESTAMP(6))
+                    ON DUPLICATE KEY UPDATE
+                        player_value=player_stats.player_value+VALUES(player_value),
+                        updated_at=UTC_TIMESTAMP(6)
+                    """)) {
+                insert.setString(1, player.toString());
+                insert.setLong(2, 10);
+                assertEquals(1, insert.executeUpdate());
+                insert.setLong(2, 20);
+                assertEquals(2, insert.executeUpdate());
+            }
+            try (var query = connection.prepareStatement(
+                    "SELECT player_value FROM player_stats WHERE player_uuid=?")) {
+                query.setString(1, player.toString());
+                try (var rows = query.executeQuery()) {
+                    assertTrue(rows.next());
+                    assertEquals(30L, rows.getLong(1));
+                }
+            }
+        }
+    }
+
+    @Test
+    void generatedUniqueKeyPreventsConcurrentActiveVaultOperations() throws SQLException {
+        UUID player = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertPlayer(connection, player);
+            insertVaultOperation(connection, UUID.randomUUID(), player, "PREPARED");
+            assertThrows(SQLException.class,
+                    () -> insertVaultOperation(connection, UUID.randomUUID(), player, "PREPARED"));
+            try (var finish = connection.prepareStatement("""
+                    UPDATE vault_operations SET status='COMMITTED'
+                    WHERE player_uuid=? AND status='PREPARED'
+                    """)) {
+                finish.setString(1, player.toString());
+                assertEquals(1, finish.executeUpdate());
+            }
+            assertDoesNotThrow(
+                    () -> insertVaultOperation(connection, UUID.randomUUID(), player, "PREPARED"));
+        }
+    }
+
+    @Test
+    void innodbRollsBackPlayerValueJournalAndStatsTogether() throws SQLException {
+        UUID player = UUID.randomUUID();
+        UUID operation = UUID.randomUUID();
+        try (Connection connection = connection()) {
+            insertPlayer(connection, player);
+            connection.setAutoCommit(false);
+            try {
+                insertVaultOperation(connection, operation, player, "PREPARED");
+                try (var stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, player_value, updated_at)
+                        VALUES (?, 50, UTC_TIMESTAMP(6))
+                        """)) {
+                    stats.setString(1, player.toString());
+                    stats.executeUpdate();
+                }
+                connection.rollback();
+            } finally {
+                connection.setAutoCommit(true);
+            }
+            assertEquals(0, count(connection, "vault_operations", operation.toString()));
+            assertEquals(0, count(connection, "player_stats", player.toString()));
+        }
+    }
+
+    private static Connection connection() throws SQLException {
+        return DriverManager.getConnection(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+    }
+
+    private static void insertPlayer(Connection connection, UUID player) throws SQLException {
+        try (var insert = connection.prepareStatement(
+                "INSERT INTO player_data(uuid, username) VALUES (?, 'TestPlayer')")) {
+            insert.setString(1, player.toString());
+            insert.executeUpdate();
+        }
+    }
+
+    private static void insertVaultOperation(Connection connection, UUID operation, UUID player, String status)
+            throws SQLException {
+        try (var insert = connection.prepareStatement("""
+                INSERT INTO vault_operations(
+                    operation_id, player_uuid, operation_type, status,
+                    material, amount, item_payload, credited_value
+                ) VALUES (?, ?, 'DEPOSIT', ?, 'DIAMOND', 1, ?, 10)
+                """)) {
+            insert.setString(1, operation.toString());
+            insert.setString(2, player.toString());
+            insert.setString(3, status);
+            insert.setBytes(4, new byte[] {1, 2, 3});
+            insert.executeUpdate();
+        }
+    }
+
+    private static long count(Connection connection, String table, String id) throws SQLException {
+        try (var query = connection.prepareStatement(
+                "SELECT COUNT(*) FROM " + table + " WHERE " + (table.equals("player_stats")
+                        ? "player_uuid" : "operation_id") + "=?")) {
+            query.setString(1, id);
+            try (var rows = query.executeQuery()) {
+                rows.next();
+                return rows.getLong(1);
+            }
+        }
+    }
+}
