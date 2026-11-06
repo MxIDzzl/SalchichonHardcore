@@ -5,7 +5,7 @@ This document is the acceptance contract for the complete ecosystem. It intentio
 ## 1. Non-negotiable deployment and security rules
 
 - Never commit credentials, license tokens, API keys, signing keys, or production database exports.
-- PostgreSQL must listen only on localhost or a private host network. The web application must never connect directly to PostgreSQL.
+- MySQL must listen only on localhost or a private host network. The web application must never connect directly to MySQL.
 - The Paper plugin talks to the backend over HTTPS. The backend owns database access and license validation; plugin secrets are injected by the host environment.
 - License checks must use short-lived signed responses, server-side revocation, expiry, instance identity, replay protection, and key rotation. A modified JAR can bypass client checks; licensing is authorization and abuse control, not unbreakable DRM.
 - Keep SQLite intact until a tested export, reconciliation report, backup restore drill, and rollback procedure have passed against a copy of the exact production database.
@@ -52,7 +52,7 @@ Recovery protocol and crash-boundary requirements are specified in [PLAYER-VALUE
 
 ## 5. Backend API and license service
 
-Suggested stack: Spring Boot, PostgreSQL, Flyway, HTTPS reverse proxy.
+Suggested stack: Spring Boot, MySQL, Flyway, HTTPS reverse proxy.
 - Plugin authentication: per-instance credential provisioned outside the JAR; rotate and revoke server-side.
 - Separate read-only public endpoints from authenticated ingestion and admin endpoints.
 - Enforce schema validation, request size limits, rate limits, UUID ownership, permission scopes, and idempotency keys.
@@ -62,7 +62,7 @@ Suggested stack: Spring Boot, PostgreSQL, Flyway, HTTPS reverse proxy.
 
 ## 6. Public website
 
-Suggested stack: Next.js with server-side API calls; never connect from browser to PostgreSQL.
+Suggested stack: Next.js with server-side API calls; never connect from browser to MySQL.
 - Overview: current season, difficulty and description, player totals, deaths, playtime, totems, value leaderboard, recent announcements and changelog.
 - Player profile: stable UUID route, current username, SkinRestorer-resolved skin, official deaths, playtime, totems, Player Value, status/health only if the server explicitly publishes it.
 - Skin lookup must fail closed to a neutral placeholder; never fabricate random skins.
@@ -82,7 +82,7 @@ Suggested stack: Next.js with server-side API calls; never connect from browser 
 
 A feature is releasable only after:
 1. Unit tests for validation and edge cases.
-2. Integration tests against the exact supported Paper API and PostgreSQL major version.
+2. Integration tests against the exact supported Paper API and MySQL major version.
 3. Restart/crash/reconnect tests for stateful workflows.
 4. Security tests for permissions, forged requests, replay, and malformed payloads.
 5. Backup and restore rehearsal.
@@ -100,11 +100,11 @@ The authoritative product scope is documented in [PRODUCT-SCOPE.md](PRODUCT-SCOP
 - Advanced mob levels and special enemy variants are explicitly deferred to a later phase. Do not block the current portal/plugin scope on them.
 
 ### Paper plugin
-- Daily Hardcore lifecycle, official death tracking, playtime, totems, PlaceholderAPI, SQLite default, PostgreSQL adapter/migrations/importer.
+- Daily Hardcore lifecycle, official death tracking, playtime, totems, PlaceholderAPI, SQLite default, MySQL adapter/schema/importer.
 - Player Value persistence, inventory viewer, main-hand deposit, withdrawal claims, PDC markers and conservative recovery are implemented foundations.
 - Internal trade command registration has been removed; use the server's external trade plugin.
 - SkinRestorer texture-hash synchronization is implemented as an optional integration.
-- Remaining release gates: complete chest-style deposit GUI, crash-injection tests for deposits/withdrawals, SQLite/PostgreSQL parity and staging tests, exact Paper compatibility, backup/restore rehearsal.
+- Remaining release gates: complete chest-style deposit GUI, crash-injection tests for deposits/withdrawals, SQLite/MySQL integration and staging tests, exact Paper compatibility, backup/restore rehearsal.
 
 ### API and web
 - Independent Spring Boot API and Next.js portal remain separate deployable services.
@@ -114,7 +114,7 @@ The authoritative product scope is documented in [PRODUCT-SCOPE.md](PRODUCT-SCOP
 - The website must be visually polished, not reduced to a plain statistics page.
 
 ### Production safety
-- Keep PostgreSQL disabled in the live server until migration and restore drills pass.
+- Keep `database.mysql.enabled: false` on the live server until migration and restore drills pass.
 - Keep Player Value disabled until chest UI, crash tests and staging pass.
 - Preserve SQLite and verified backups.
 - Do not merge draft PRs to main without explicit release approval and all relevant gates passing.
