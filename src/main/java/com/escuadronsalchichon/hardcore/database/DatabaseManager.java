@@ -268,7 +268,8 @@ public class DatabaseManager implements PlayerDataStore {
                         kills INTEGER NOT NULL CHECK (kills >= 0),
                         deaths INTEGER NOT NULL CHECK (deaths >= 0),
                         kdr REAL NOT NULL CHECK (kdr >= 0),
-                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        is_active INTEGER NOT NULL DEFAULT 1
                     )
                     """);
             statement.executeUpdate("""
@@ -284,7 +285,8 @@ public class DatabaseManager implements PlayerDataStore {
                         kills INTEGER NOT NULL CHECK (kills >= 0),
                         deaths INTEGER NOT NULL CHECK (deaths >= 0),
                         kdr REAL NOT NULL CHECK (kdr >= 0),
-                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                        synced_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        is_active INTEGER NOT NULL DEFAULT 1
                     )
                     """);
             statement.executeUpdate("""
