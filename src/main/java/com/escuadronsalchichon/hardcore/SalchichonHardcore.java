@@ -15,6 +15,7 @@ import com.escuadronsalchichon.hardcore.manager.DailyResetManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.manager.PlaytimeTracker;
 import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
+import com.escuadronsalchichon.hardcore.integration.ClanDirectorySync;
 import com.escuadronsalchichon.hardcore.vault.VaultCommand;
 import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
 import com.escuadronsalchichon.hardcore.vault.VaultWithdrawalService;
@@ -32,6 +33,7 @@ public class SalchichonHardcore extends JavaPlugin {
     private PlaytimeTracker playtimeTracker;
     private VaultInventoryService vaultInventoryService;
     private VaultWithdrawalService vaultWithdrawalService;
+    private ClanDirectorySync clanDirectorySync;
 
     @Override
     public void onEnable() {
@@ -118,6 +120,9 @@ public class SalchichonHardcore extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
+
+        clanDirectorySync = new ClanDirectorySync(this, databaseManager);
+        clanDirectorySync.start();
         if (Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer")) {
             try {
                 Class<?> bridge = Class.forName(
@@ -155,6 +160,9 @@ public class SalchichonHardcore extends JavaPlugin {
         }
         if (bossBarManager != null) {
             bossBarManager.removeAll();
+        }
+        if (clanDirectorySync != null) {
+            clanDirectorySync.stop();
         }
         if (databaseManager != null) {
             databaseManager.disconnect();
