@@ -14,6 +14,10 @@ import com.zaxxer.hikari.HikariDataSource;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -98,6 +102,75 @@ class MySqlDatabaseManagerIntegrationTest {
         assertEquals(before.pendingWithdrawals(), recovery.pendingWithdrawals());
         assertEquals(before.recoveryRequiredDeposits(), recovery.recoveryRequiredDeposits());
         assertEquals(before.recoveryRequiredWithdrawals(), recovery.recoveryRequiredWithdrawals());
+    }
+
+    @Test
+    void withdrawsAtomicallyAndTracksDeliveryUntilAcknowledged() {
+        UUID playerId = UUID.randomUUID();
+        assertTrue(manager.savePlayer(new PlayerData(playerId, "WithdrawalTester", null)));
+        VaultItemRecord deposited = item(playerId, 25);
+        assertTrue(manager.prepareVaultDeposit(playerId, "WithdrawalTester", deposited));
+        assertTrue(manager.markVaultDepositInventoryRemoved(playerId, deposited.itemId()));
+        assertTrue(manager.commitVaultDeposit(playerId, deposited.itemId()));
+        assertEquals(25L, manager.getPlayerValue(playerId));
+
+        Instant now = Instant.now();
+        VaultClaimRecord claim = manager.createVaultWithdrawal(
+                playerId, deposited.itemId(), now, now.plusSeconds(30));
+
+        assertNotNull(claim);
+        assertEquals("PENDING", claim.status());
+        assertEquals(0L, manager.getPlayerValue(playerId));
+        assertTrue(manager.getVaultItems(playerId, 20, 0).isEmpty());
+        assertEquals(1, manager.getUncertainVaultClaims(playerId).size());
+
+        assertTrue(manager.markVaultClaimDelivering(claim.claimId(), playerId));
+        assertEquals("DELIVERING", manager.getUncertainVaultClaims(playerId).get(0).status());
+        assertTrue(manager.markVaultClaimDelivered(claim.claimId(), playerId));
+        assertTrue(manager.getUncertainVaultClaims(playerId).isEmpty());
+        assertNull(manager.createVaultWithdrawal(
+                playerId, deposited.itemId(), now.plusSeconds(31), now.plusSeconds(61)));
+    }
+
+    @Test
+    void serializesFirstWithdrawalsForOnePlayerAndHonorsCooldown() throws Exception {
+        UUID playerId = UUID.randomUUID();
+        assertTrue(manager.savePlayer(new PlayerData(playerId, "ConcurrentVaultTester", null)));
+        VaultItemRecord first = item(playerId, 10);
+        VaultItemRecord second = item(playerId, 20);
+        deposit(playerId, first);
+        deposit(playerId, second);
+
+        Instant now = Instant.now();
+        Instant nextAllowed = now.plusSeconds(60);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<VaultClaimRecord> firstAttempt = executor.submit(() -> {
+                start.await();
+                return manager.createVaultWithdrawal(playerId, first.itemId(), now, nextAllowed);
+            });
+            Future<VaultClaimRecord> secondAttempt = executor.submit(() -> {
+                start.await();
+                return manager.createVaultWithdrawal(playerId, second.itemId(), now, nextAllowed);
+            });
+            start.countDown();
+
+            VaultClaimRecord firstResult = firstAttempt.get();
+            VaultClaimRecord secondResult = secondAttempt.get();
+            assertNotEquals(firstResult == null, secondResult == null,
+                    "Exactly one simultaneous first withdrawal should be accepted");
+            assertEquals(1, manager.getVaultItems(playerId, 20, 0).size());
+            assertEquals(firstResult == null ? 10L : 20L, manager.getPlayerValue(playerId));
+        } finally {
+            executor.shutdownNow();
+        }
+    }
+
+    private void deposit(UUID playerId, VaultItemRecord item) {
+        assertTrue(manager.prepareVaultDeposit(playerId, "ConcurrentVaultTester", item));
+        assertTrue(manager.markVaultDepositInventoryRemoved(playerId, item.itemId()));
+        assertTrue(manager.commitVaultDeposit(playerId, item.itemId()));
     }
 
     private static VaultItemRecord item(UUID playerId, long value) {
