@@ -70,6 +70,7 @@ class MySqlDatabaseManagerIntegrationTest {
 
     @Test
     void commitsRepeatedVaultDepositsWithoutLosingValueOnMysqlUpsertCounts() {
+        VaultRecoverySummary before = manager.getVaultRecoverySummary();
         UUID playerId = UUID.randomUUID();
         assertTrue(manager.savePlayer(new PlayerData(playerId, "VaultTester", null)));
 
@@ -93,8 +94,10 @@ class MySqlDatabaseManagerIntegrationTest {
 
         VaultRecoverySummary recovery = manager.getVaultRecoverySummary();
         assertNotNull(recovery);
-        assertEquals(0, recovery.preparedDeposits());
-        assertEquals(0, recovery.pendingWithdrawals());
+        assertEquals(before.preparedDeposits(), recovery.preparedDeposits());
+        assertEquals(before.pendingWithdrawals(), recovery.pendingWithdrawals());
+        assertEquals(before.recoveryRequiredDeposits(), recovery.recoveryRequiredDeposits());
+        assertEquals(before.recoveryRequiredWithdrawals(), recovery.recoveryRequiredWithdrawals());
     }
 
     private static VaultItemRecord item(UUID playerId, long value) {
