@@ -14,24 +14,35 @@ permissions:
 
 jobs:
   build:
+    name: Verify (${{ matrix.database.name }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        database:
+          - name: MySQL 8.4
+            image: mysql:8.4
+            health-command: mysqladmin ping -h 127.0.0.1 -proot-test-password
+          - name: MariaDB 11.4
+            image: mariadb:11.4
+            health-command: healthcheck.sh --connect --innodb_initialized
     env:
       SALCHICHON_MYSQL_TEST_URL: jdbc:mysql://127.0.0.1:3306/salchichon?useSSL=false&allowPublicKeyRetrieval=true
       SALCHICHON_MYSQL_TEST_USER: root
       SALCHICHON_MYSQL_TEST_PASSWORD: root-test-password
     services:
-      mysql:
-        image: mysql:8.4
+      database:
+        image: ${{ matrix.database.image }}
         env:
           MYSQL_ROOT_PASSWORD: root-test-password
           MYSQL_DATABASE: salchichon
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot-test-password"
+          --health-cmd="${{ matrix.database.health-command }}"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=10
+          --health-retries=15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,7 +55,7 @@ jobs:
       - name: Verify
         run: mvn --batch-mode --no-transfer-progress clean verify
       - name: Upload test plugin
-        if: success() && github.ref == 'refs/heads/feature/postgresql-foundation'
+        if: success() && github.ref == 'refs/heads/feature/postgresql-foundation' && matrix.database.name == 'MySQL 8.4'
         uses: actions/upload-artifact@v4
         with:
           name: SalchichonHardcore-test-${{ github.sha }}
