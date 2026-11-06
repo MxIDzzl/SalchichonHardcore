@@ -20,7 +20,7 @@ final class VaultInventoryCapacity {
         List<Slot> slots = new ArrayList<>(contents.length);
         for (ItemStack existing : contents) {
             if (existing == null || existing.getType().isAir()) {
-                slots.add(Slot.empty());
+                slots.add(Slot.emptySlot());
             } else {
                 slots.add(Slot.stack(existing.isSimilar(requested),
                         existing.getAmount(), existing.getMaxStackSize()));
@@ -51,7 +51,7 @@ final class VaultInventoryCapacity {
     }
 
     record Slot(boolean empty, boolean similar, int amount, int maxStackSize) {
-        static Slot empty() {
+        static Slot emptySlot() {
             return new Slot(true, false, 0, 0);
         }
 
