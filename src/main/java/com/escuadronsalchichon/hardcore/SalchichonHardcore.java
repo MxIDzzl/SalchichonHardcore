@@ -4,7 +4,6 @@ import com.escuadronsalchichon.hardcore.command.HardcoreCommand;
 import com.escuadronsalchichon.hardcore.database.DatabaseManager;
 import com.escuadronsalchichon.hardcore.database.MySqlDatabaseManager;
 import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
-import com.escuadronsalchichon.hardcore.database.PostgresDatabaseManager;
 import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
@@ -44,17 +43,9 @@ public class SalchichonHardcore extends JavaPlugin {
         reloadConfig();
 
         boolean mysqlRequested = getConfig().getBoolean("database.mysql.enabled", false);
-        boolean postgresqlRequested = getConfig().getBoolean("database.postgresql.enabled", false);
-        if (mysqlRequested && postgresqlRequested) {
-            getLogger().severe("Solo puede habilitarse un backend de base de datos a la vez.");
-            getServer().getPluginManager().disablePlugin(this);
-            return;
-        }
         databaseManager = mysqlRequested
                 ? new MySqlDatabaseManager(this)
-                : postgresqlRequested
-                    ? new PostgresDatabaseManager(this)
-                    : new DatabaseManager(this);
+                : new DatabaseManager(this);
 
         if (!databaseManager.connect()) {
             getLogger().severe("El plugin no puede continuar sin la base de datos.");
