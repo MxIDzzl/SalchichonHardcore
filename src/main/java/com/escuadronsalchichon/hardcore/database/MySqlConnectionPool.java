@@ -55,6 +55,7 @@ public final class MySqlConnectionPool implements AutoCloseable {
         poolConfig.setMaxLifetime(Math.max(30000,
                 config.getLong(prefix + "pool.max-lifetime-ms", 1800000)));
         poolConfig.setAutoCommit(true);
+        poolConfig.setConnectionInitSql("SET time_zone = '+00:00'");
 
         try {
             dataSource = new HikariDataSource(poolConfig);
