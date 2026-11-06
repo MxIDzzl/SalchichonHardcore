@@ -68,6 +68,41 @@ public final class VaultInventoryService implements Listener {
         return recoveryPlayers.contains(playerUuid);
     }
 
+    public List<VaultDepositCandidate> getDepositCandidates(Player player) {
+        if (policy == null || player == null) return List.of();
+        java.util.ArrayList<VaultDepositCandidate> candidates = new java.util.ArrayList<>();
+        for (int slot = 0; slot < 36; slot++) {
+            ItemStack item = player.getInventory().getItem(slot);
+            if (item == null || item.getType().isAir()) continue;
+            var credit = policy.creditFor(item);
+            if (credit.isEmpty()) continue;
+            try {
+                candidates.add(new VaultDepositCandidate(slot, item, credit.getAsLong(), item.serializeAsBytes()));
+            } catch (RuntimeException invalidItem) {
+                plugin.getLogger().warning("Se omitió un objeto que no pudo serializarse en el menú de depósito.");
+            }
+        }
+        return List.copyOf(candidates);
+    }
+
+    public void openDepositMenu(Player player) {
+        if (!plugin.getConfig().getBoolean("player-value.enabled", false)) {
+            player.sendMessage("§cPlayer Value está desactivado.");
+            return;
+        }
+        if (policy == null) {
+            player.sendMessage("§cLa lista de objetos permitidos no está configurada correctamente.");
+            return;
+        }
+        if (recoveryPlayers.contains(player.getUniqueId()) || lockedPlayers.contains(player.getUniqueId())) {
+            player.sendMessage("§eTu almacén tiene una operación pendiente; espera a que termine la recuperación.");
+            return;
+        }
+        List<VaultDepositCandidate> candidates = getDepositCandidates(player);
+        player.openInventory(VaultDepositMenu.create(player, candidates));
+        if (candidates.isEmpty()) player.sendMessage("§7No tienes objetos permitidos para depositar.");
+    }
+
     public boolean beginExternalOperation(UUID playerUuid) {
         return playerUuid != null && !recoveryPlayers.contains(playerUuid) && lockedPlayers.add(playerUuid);
     }
@@ -87,7 +122,16 @@ public final class VaultInventoryService implements Listener {
         }
     }
 
+    public void deposit(Player player, VaultDepositCandidate candidate) {
+        if (candidate == null) return;
+        deposit(player, candidate.inventorySlot(), candidate.fingerprint());
+    }
+
     public void deposit(Player player) {
+        deposit(player, player.getInventory().getHeldItemSlot(), null);
+    }
+
+    private void deposit(Player player, int inventorySlot, byte[] expectedFingerprint) {
         if (!plugin.getConfig().getBoolean("player-value.enabled", false)) {
             player.sendMessage("§cPlayer Value está desactivado.");
             return;
@@ -102,11 +146,29 @@ public final class VaultInventoryService implements Listener {
             return;
         }
 
-        ItemStack original = player.getInventory().getItemInMainHand();
-        if (original.getType().isAir()) {
+        if (inventorySlot < 0 || inventorySlot >= 36) {
             lockedPlayers.remove(playerUuid);
-            player.sendMessage("§cSostén en la mano el objeto que quieres depositar.");
+            player.sendMessage("§cLa ranura seleccionada ya no es válida.");
             return;
+        }
+        ItemStack original = player.getInventory().getItem(inventorySlot);
+        if (original == null || original.getType().isAir()) {
+            lockedPlayers.remove(playerUuid);
+            player.sendMessage("§eEse objeto ya no está en tu inventario. Abre de nuevo el cofre.");
+            return;
+        }
+        if (expectedFingerprint != null) {
+            try {
+                if (!java.util.Arrays.equals(expectedFingerprint, original.serializeAsBytes())) {
+                    lockedPlayers.remove(playerUuid);
+                    player.sendMessage("§eEl objeto cambió desde que abriste el cofre. Ábrelo de nuevo para actualizarlo.");
+                    return;
+                }
+            } catch (RuntimeException invalidItem) {
+                lockedPlayers.remove(playerUuid);
+                player.sendMessage("§cNo se pudo verificar el objeto seleccionado.");
+                return;
+            }
         }
         var credit = policy.creditFor(original);
         if (credit.isEmpty()) {
@@ -122,11 +184,11 @@ public final class VaultInventoryService implements Listener {
             player.sendMessage("§cNo se pudo preparar el marcador seguro del depósito.");
             return;
         }
-        player.getInventory().setItemInMainHand(marked);
+        player.getInventory().setItem(inventorySlot, marked);
         try {
             player.saveData();
         } catch (RuntimeException failure) {
-            player.getInventory().setItemInMainHand(original);
+            player.getInventory().setItem(inventorySlot, original);
             lockedPlayers.remove(playerUuid);
             player.sendMessage("§cNo se pudo guardar el inventario; el depósito no se inició.");
             return;
