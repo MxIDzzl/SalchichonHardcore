@@ -1,0 +1,1676 @@
+package com.escuadronsalchichon.hardcore.database;
+
+import com.escuadronsalchichon.hardcore.player.PlayerData;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowItem;
+import com.escuadronsalchichon.hardcore.trade.TradeEscrowRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeSessionRecord;
+import com.escuadronsalchichon.hardcore.trade.TradeStatus;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneId;
+import java.util.UUID;
+
+/**
+ * MySQL implementation of the player persistence contract.
+ * Uses short-lived pooled connections; no JDBC connection is shared between
+ * Bukkit event threads.
+ */
+public final class MySqlDatabaseManager implements PlayerDataStore {
+
+    private final JavaPlugin plugin;
+    private final MySqlConnectionPool pool;
+
+    public MySqlDatabaseManager(JavaPlugin plugin) {
+        this.plugin = plugin;
+        this.pool = new MySqlConnectionPool(plugin);
+    }
+
+    @Override
+    public boolean connect() {
+        try {
+            pool.start();
+            return true;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo conectar con MySQL.");
+            plugin.getLogger().severe(exception.getMessage());
+            return false;
+        }
+    }
+
+    @Override
+    public boolean createTables() {
+        try {
+            new MySqlSchemaManager(plugin, pool).initialize();
+            return true;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo inicializar el esquema PostgreSQL.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public void disconnect() {
+        pool.close();
+    }
+
+    private boolean isConnected() {
+        return pool.isRunning();
+    }
+
+    private OffsetDateTime auditTimestamp() {
+        String zoneName = plugin.getConfig().getString("settings.timezone", "America/Mexico_City");
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(zoneName);
+        } catch (RuntimeException exception) {
+            plugin.getLogger().warning("Zona horaria inválida; auditoría usará UTC.");
+            zone = ZoneId.of("UTC");
+        }
+        return OffsetDateTime.now(zone);
+    }
+
+    @Override
+    public boolean resetPlayerCounter(UUID uuid, String targetName, String adminName, String reason) {
+        return updateLifeAndAudit(uuid, targetName, adminName, reason, "RESET_COUNTER");
+    }
+
+    @Override
+    public boolean restorePlayerLife(UUID uuid, String targetName, String adminName, String reason) {
+        return updateLifeAndAudit(uuid, targetName, adminName, reason, "RESTORE_LIFE");
+    }
+
+    private boolean updateLifeAndAudit(UUID uuid, String targetName, String adminName, String reason, String action) {
+        if (!isConnected() || uuid == null || blank(targetName) || blank(adminName) || blank(reason)) return false;
+        String updateSql = "UPDATE player_data SET last_death_date = NULL WHERE uuid = ?";
+        String auditSql = """
+                INSERT IGNORE INTO admin_audit (target_uuid,target_name,admin_name,action,reason,created_at) VALUES (?,?,?,?,?,?)
+                """;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement update = connection.prepareStatement(updateSql)) {
+                    updateMySqlJdbcValues.bindValue(1, uuid);
+                    if (update.executeUpdate() != 1) {
+                        connection.rollback();
+                        return false;
+                    }
+                }
+                try (PreparedStatement audit = connection.prepareStatement(auditSql)) {
+                    auditMySqlJdbcValues.bindValue(1, uuid);
+                    audit.setString(2, targetName);
+                    audit.setString(3, adminName);
+                    audit.setString(4, action);
+                    audit.setString(5, reason.trim());
+                    auditMySqlJdbcValues.bindValue(6, auditTimestamp());
+                    audit.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo ejecutar la acción administrativa " + action + ".");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public void resetDeathsBefore(LocalDate today) {
+        if (today == null) throw new IllegalArgumentException("La fecha no puede ser null.");
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE player_data SET last_death_date = NULL WHERE last_death_date < ?")) {
+            statementMySqlJdbcValues.bindValue(1, today);
+            statement.executeUpdate();
+        } catch (SQLException exception) {
+            throw new IllegalStateException("No se pudieron reiniciar las vidas expiradas.", exception);
+        }
+    }
+
+    @Override
+    public boolean incrementTotems(UUID uuid) {
+        if (!isConnected() || uuid == null) return false;
+        String sql = """
+                INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                VALUES (?, 'Unknown', NULL, 1)
+                ON DUPLICATE KEY UPDATE totem_uses = player_data.totem_uses + 1
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar el uso de tótem.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public long getTotems(UUID uuid) {
+        if (!isConnected() || uuid == null) return 0L;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "SELECT totem_uses FROM player_data WHERE uuid = ?")) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? result.getLong(1) : 0L;
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar el uso de tótems.");
+            exception.printStackTrace();
+            return 0L;
+        }
+    }
+
+    @Override
+    public boolean savePlayer(PlayerData data) {
+        if (!isConnected() || data == null || data.getUuid() == null || blank(data.getUsername())) return false;
+        String sql = """
+                INSERT INTO player_data(uuid,username,last_death_date)
+                VALUES (?,?,?)
+                ON DUPLICATE KEY UPDATE
+                    username = VALUES(username),
+                    last_death_date = VALUES(last_death_date)
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statementMySqlJdbcValues.bindValue(1, data.getUuid());
+            statement.setString(2, data.getUsername());
+            if (data.getLastDeathDate() == null) statement.setNull(3, Types.DATE);
+            else statementMySqlJdbcValues.bindValue(3, data.getLastDeathDate());
+            statement.executeUpdate();
+            return true;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron guardar los datos del jugador.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public PlayerData getPlayer(UUID uuid) {
+        if (uuid == null) throw new IllegalArgumentException("UUID no puede ser null.");
+        String sql = "SELECT username,last_death_date FROM player_data WHERE uuid = ?";
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                java.sql.Date date = result.getDate("last_death_date");
+                return new PlayerData(uuid, result.getString("username"),
+                        date == null ? null : date.toLocalDate());
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Error al recuperar los datos del jugador: " + uuid, exception);
+        }
+    }
+
+    @Override
+    public PlayerData getPlayerByName(String username) {
+        if (blank(username)) throw new IllegalArgumentException("Nombre no puede estar vacío.");
+        String sql = """
+                SELECT uuid,username,last_death_date FROM player_data
+                WHERE LOWER(username) = LOWER(?) ORDER BY username LIMIT 1
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, username.trim());
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                java.sql.Date date = result.getDate("last_death_date");
+                return new PlayerData(MySqlJdbcValues.readUuid(result, "uuid"),
+                        result.getString("username"), date == null ? null : date.toLocalDate());
+            }
+        } catch (SQLException exception) {
+            throw new IllegalStateException("Error al buscar al jugador: " + username, exception);
+        }
+    }
+
+    @Override
+    public boolean updateDeathDate(UUID uuid, LocalDate deathDate) {
+        if (!isConnected() || uuid == null || deathDate == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "UPDATE player_data SET last_death_date = ? WHERE uuid = ?")) {
+            statementMySqlJdbcValues.bindValue(1, deathDate);
+            statementMySqlJdbcValues.bindValue(2, uuid);
+            return statement.executeUpdate() > 0;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo actualizar la fecha de muerte.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+
+    @Override
+    public boolean recordOfficialDeath(UUID uuid, String username, LocalDate deathDate) {
+        if (!isConnected() || uuid == null || blank(username) || deathDate == null) return false;
+        String playerSql = """
+                INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                VALUES (?, ?, NULL, 0)
+                ON DUPLICATE KEY UPDATE username = VALUES(username)
+                """;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement(playerSql)) {
+                    playerMySqlJdbcValues.bindValue(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                LocalDate previousDeathDate;
+                try (PreparedStatement query = connection.prepareStatement(
+                        "SELECT last_death_date FROM player_data WHERE uuid = ? FOR UPDATE")) {
+                    queryMySqlJdbcValues.bindValue(1, uuid);
+                    try (ResultSet result = query.executeQuery()) {
+                        if (!result.next()) throw new SQLException("No se encontró el jugador después del upsert.");
+                        previousDeathDate = result.getObject(1, LocalDate.class);
+                    }
+                }
+                // Idempotencia por día: reintentar el mismo evento no duplica la muerte.
+                // Una restauración administrativa limpia last_death_date y permite otra muerte real.
+                if (deathDate.equals(previousDeathDate)) {
+                    connection.commit();
+                    return true;
+                }
+                try (PreparedStatement updateDeath = connection.prepareStatement(
+                        "UPDATE player_data SET last_death_date = ? WHERE uuid = ?")) {
+                    updateDeathMySqlJdbcValues.bindValue(1, deathDate);
+                    updateDeathMySqlJdbcValues.bindValue(2, uuid);
+                    if (updateDeath.executeUpdate() != 1) throw new SQLException("No se pudo actualizar la fecha de muerte.");
+                }
+                long previous = 0;
+                try (PreparedStatement query = connection.prepareStatement("SELECT official_deaths FROM player_stats WHERE player_uuid = ? FOR UPDATE")) {
+                    queryMySqlJdbcValues.bindValue(1, uuid);
+                    try (ResultSet result = query.executeQuery()) { if (result.next()) previous = result.getLong(1); }
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, official_deaths, updated_at)
+                        VALUES (?, 1, now())
+                        ON DUPLICATE KEY UPDATE official_deaths = player_stats.official_deaths + 1, updated_at = now()
+                        """)) { statsMySqlJdbcValues.bindValue(1, uuid); stats.executeUpdate(); }
+                try (PreparedStatement event = connection.prepareStatement("""
+                        INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
+                        VALUES (?, 'official_deaths', ?, ?, 'SERVER', 'PLAYER_DEATH')
+                        """)) {
+                    eventMySqlJdbcValues.bindValue(1, uuid); event.setLong(2, previous); event.setLong(3, previous + 1); event.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar la muerte oficial de " + username);
+            exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public boolean addPlaytimeTicks(UUID uuid, String username, long ticks) {
+        if (!isConnected() || uuid == null || blank(username) || ticks <= 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid, username, last_death_date, totem_uses)
+                        VALUES (?, ?, NULL, 0)
+                        ON DUPLICATE KEY UPDATE username = VALUES(username)
+                        """)) { playerMySqlJdbcValues.bindValue(1, uuid); player.setString(2, username); player.executeUpdate(); }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, playtime_ticks, updated_at)
+                        VALUES (?, ?, now())
+                        ON DUPLICATE KEY UPDATE playtime_ticks = player_stats.playtime_ticks + VALUES(playtime_ticks), updated_at = now()
+                        """)) { statsMySqlJdbcValues.bindValue(1, uuid); stats.setLong(2, ticks); stats.executeUpdate(); }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el tiempo de juego."); exception.printStackTrace(); return false; }
+    }
+
+    @Override
+    public long getOfficialDeaths(UUID uuid) { return getOfficialStat(uuid, "official_deaths"); }
+
+    @Override
+    public long getPlaytimeTicks(UUID uuid) { return getOfficialStat(uuid, "playtime_ticks"); }
+
+
+    @Override
+    public boolean setOfficialStat(UUID uuid, String statKey, long value, String actor, String reason) {
+        if (!isConnected() || uuid == null || value < 0 || blank(actor) || blank(reason)) return false;
+        String column = switch (statKey == null ? "" : statKey.toLowerCase(java.util.Locale.ROOT)) {
+            case "deaths" -> "official_deaths";
+            case "playtime" -> "playtime_ticks";
+            case "value" -> "player_value";
+            default -> null;
+        };
+        if (column == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                long previous = 0;
+                try (PreparedStatement query = connection.prepareStatement("SELECT " + column + " FROM player_stats WHERE player_uuid = ? FOR UPDATE")) {
+                    queryMySqlJdbcValues.bindValue(1, uuid);
+                    try (ResultSet result = query.executeQuery()) { if (result.next()) previous = result.getLong(1); }
+                }
+                try (PreparedStatement upsert = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid, official_deaths, playtime_ticks, player_value, updated_at)
+                        VALUES (?, 0, 0, 0, now())
+                        
+                        """)) { upsertMySqlJdbcValues.bindValue(1, uuid); upsert.executeUpdate(); }
+                try (PreparedStatement update = connection.prepareStatement("UPDATE player_stats SET " + column + " = ?, updated_at = now() WHERE player_uuid = ?")) {
+                    update.setLong(1, value); updateMySqlJdbcValues.bindValue(2, uuid);
+                    if (update.executeUpdate() != 1) throw new SQLException("No se actualizó la estadística.");
+                }
+                try (PreparedStatement event = connection.prepareStatement("""
+                        INSERT INTO stat_events(player_uuid, stat_key, previous_value, new_value, actor, reason)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        """)) {
+                    eventMySqlJdbcValues.bindValue(1, uuid); event.setString(2, column); event.setLong(3, previous);
+                    event.setLong(4, value); event.setString(5, actor); event.setString(6, reason.trim()); event.executeUpdate();
+                }
+                if ("player_value".equals(column)) {
+                    try (PreparedStatement adjustment = connection.prepareStatement("""
+                            INSERT INTO player_value_adjustments(
+                                player_uuid, previous_value, new_value, adjustment_delta, actor, reason
+                            ) VALUES (?, ?, ?, ?, ?, ?)
+                            """)) {
+                        adjustmentMySqlJdbcValues.bindValue(1, uuid);
+                        adjustment.setLong(2, previous);
+                        adjustment.setLong(3, value);
+                        adjustment.setLong(4, Math.subtractExact(value, previous));
+                        adjustment.setString(5, actor);
+                        adjustment.setString(6, reason.trim());
+                        adjustment.executeUpdate();
+                    }
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo corregir la estadística oficial."); exception.printStackTrace(); return false; }
+    }
+
+    private long getOfficialStat(UUID uuid, String column) {
+        if (!isConnected() || uuid == null) return 0L;
+        if (!column.equals("official_deaths") && !column.equals("playtime_ticks")) throw new IllegalArgumentException("Estadística inválida");
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("SELECT " + column + " FROM player_stats WHERE player_uuid = ?")) {
+            queryMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo consultar " + column); exception.printStackTrace(); return 0L; }
+    }
+
+
+
+    @Override
+    public boolean prepareVaultDeposit(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || blank(username) || item == null || !uuid.equals(item.playerUuid())) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                        VALUES (?,?,NULL,0) ON DUPLICATE KEY UPDATE username=VALUES(username)
+                        """)) {
+                    playerMySqlJdbcValues.bindValue(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                try (PreparedStatement operation = connection.prepareStatement("""
+                        INSERT INTO vault_operations(
+                            operation_id,player_uuid,operation_type,status,item_id,material,amount,
+                            item_payload,credited_value,created_at,updated_at
+                        ) VALUES (?,?,'DEPOSIT','PREPARED',?,?,?,?,?,?,?)
+                        """)) {
+                    operationMySqlJdbcValues.bindValue(1, item.itemId()); operationMySqlJdbcValues.bindValue(2, uuid);
+                    operationMySqlJdbcValues.bindValue(3, item.itemId()); operation.setString(4, item.material());
+                    operation.setInt(5, item.amount()); operation.setBytes(6, item.payload());
+                    operation.setLong(7, item.creditedValue());
+                    OffsetDateTime created=OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC"));
+                    operationMySqlJdbcValues.bindValue(8, created); operationMySqlJdbcValues.bindValue(9, created); operation.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo preparar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public boolean commitVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                String material; int amount; byte[] payload; long value; OffsetDateTime created;
+                try (PreparedStatement query = connection.prepareStatement("""
+                        SELECT material,amount,item_payload,credited_value,created_at,status
+                        FROM vault_operations
+                        WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
+                        FOR UPDATE
+                        """)) {
+                    queryMySqlJdbcValues.bindValue(1, operationId); queryMySqlJdbcValues.bindValue(2, uuid);
+                    try (ResultSet row = query.executeQuery()) {
+                        if (!row.next()) { connection.rollback(); return false; }
+                        if ("COMMITTED".equals(row.getString("status"))) { connection.commit(); return true; }
+                        if (!"DELIVERY_PENDING".equals(row.getString("status"))) { connection.rollback(); return false; }
+                        material=row.getString("material"); amount=row.getInt("amount"); payload=row.getBytes("item_payload");
+                        value=row.getLong("credited_value"); created=MySqlJdbcValues.readOffsetDateTime(row, "created_at");
+                    }
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                        VALUES (?,?,?,?,?,?,?)
+                        """)) {
+                    insertMySqlJdbcValues.bindValue(1, operationId); insertMySqlJdbcValues.bindValue(2, uuid); insert.setString(3, material);
+                    insert.setInt(4, amount); insert.setBytes(5, payload); insert.setLong(6, value);
+                    insertMySqlJdbcValues.bindValue(7, created); insert.executeUpdate();
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        ON DUPLICATE KEY UPDATE player_value=player_stats.player_value+VALUES(player_value),
+                        updated_at=now()
+                        WHERE player_stats.player_value <= 9223372036854775807 - VALUES(player_value)
+                        """)) {
+                    statsMySqlJdbcValues.bindValue(1, uuid); stats.setLong(2, value);
+                    if (stats.executeUpdate() != 1) throw new SQLException("El Player Value excedería el límite BIGINT.");
+                }
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE vault_operations SET status='COMMITTED',updated_at=now()
+                        WHERE operation_id=? AND player_uuid=? AND status='DELIVERY_PENDING'
+                        """)) {
+                    updateMySqlJdbcValues.bindValue(1, operationId); updateMySqlJdbcValues.bindValue(2, uuid);
+                    if (update.executeUpdate()!=1) throw new SQLException("La operación dejó de estar PREPARED.");
+                }
+                connection.commit(); return true;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback(); throw exception;
+            } finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar el depósito Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+
+    @Override
+    public java.util.List<VaultDepositRecoveryRecord> getUncertainVaultDeposits(UUID uuid) {
+        if (!isConnected() || uuid == null) return null;
+        java.util.List<VaultDepositRecoveryRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("""
+                     SELECT operation_id,material,amount,item_payload,credited_value,created_at,status
+                     FROM vault_operations
+                     WHERE player_uuid=? AND operation_type='DEPOSIT'
+                       AND status IN ('PREPARED','DELIVERY_PENDING','RECOVERY_REQUIRED')
+                     ORDER BY created_at,operation_id
+                     """)) {
+            queryMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) {
+                    OffsetDateTime created = MySqlJdbcValues.readOffsetDateTime(rows, "created_at");
+                    VaultItemRecord item = new VaultItemRecord(MySqlJdbcValues.readUuid(rows, "operation_id"), uuid,
+                            rows.getString("material"), rows.getInt("amount"), rows.getBytes("item_payload"),
+                            rows.getLong("credited_value"), created.toInstant());
+                    items.add(new VaultDepositRecoveryRecord(item, rows.getString("status")));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | RuntimeException exception) {
+            plugin.getLogger().severe("No se pudieron consultar depósitos Player Value en recuperación.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean markVaultDepositInventoryRemoved(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement update = connection.prepareStatement("""
+                     UPDATE vault_operations SET status='DELIVERY_PENDING',updated_at=now()
+                     WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT' AND status='PREPARED'
+                     """)) {
+            updateMySqlJdbcValues.bindValue(1, operationId);
+            updateMySqlJdbcValues.bindValue(2, uuid);
+            return update.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo registrar la eliminación del objeto del inventario.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean abortVaultDeposit(UUID uuid, UUID operationId) {
+        if (!isConnected() || uuid == null || operationId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement update = connection.prepareStatement("""
+                     UPDATE vault_operations SET status='CANCELLED',updated_at=now()
+                     WHERE operation_id=? AND player_uuid=? AND operation_type='DEPOSIT'
+                       AND status IN ('PREPARED','RECOVERY_REQUIRED')
+                     """)) {
+            updateMySqlJdbcValues.bindValue(1, operationId);
+            updateMySqlJdbcValues.bindValue(2, uuid);
+            return update.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo abortar el depósito recuperado.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+    @Override
+    public boolean depositVaultItem(UUID uuid, String username, VaultItemRecord item) {
+        if (!isConnected() || uuid == null || blank(username) || item == null
+                || !uuid.equals(item.playerUuid()) || item.amount() <= 0 || item.creditedValue() < 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement player = connection.prepareStatement("""
+                        INSERT INTO player_data(uuid,username,last_death_date,totem_uses)
+                        VALUES (?,?,NULL,0) ON DUPLICATE KEY UPDATE username=VALUES(username)
+                        """)) {
+                    playerMySqlJdbcValues.bindValue(1, uuid); player.setString(2, username); player.executeUpdate();
+                }
+                try (PreparedStatement operation = connection.prepareStatement("""
+                        INSERT INTO vault_operations(
+                            operation_id, player_uuid, operation_type, status, item_id,
+                            material, amount, item_payload, credited_value, created_at, updated_at
+                        ) VALUES (?, ?, 'DEPOSIT', 'COMMITTED', ?, ?, ?, ?, ?, ?, ?)
+                        """)) {
+                    operationMySqlJdbcValues.bindValue(1, item.itemId());
+                    operationMySqlJdbcValues.bindValue(2, uuid);
+                    operationMySqlJdbcValues.bindValue(3, item.itemId());
+                    operation.setString(4, item.material());
+                    operation.setInt(5, item.amount());
+                    operation.setBytes(6, item.payload());
+                    operation.setLong(7, item.creditedValue());
+                    operationMySqlJdbcValues.bindValue(8, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC")));
+                    operationMySqlJdbcValues.bindValue(9, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC")));
+                    operation.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_value_items(item_id,player_uuid,material,amount,item_payload,credited_value,created_at)
+                        VALUES (?,?,?,?,?,?,?)
+                        """)) {
+                    insertMySqlJdbcValues.bindValue(1, item.itemId()); insertMySqlJdbcValues.bindValue(2, uuid); insert.setString(3, item.material());
+                    insert.setInt(4, item.amount()); insert.setBytes(5, item.payload()); insert.setLong(6, item.creditedValue());
+                    insertMySqlJdbcValues.bindValue(7, OffsetDateTime.ofInstant(item.createdAt(), ZoneId.of("UTC"))); insert.executeUpdate();
+                }
+                try (PreparedStatement stats = connection.prepareStatement("""
+                        INSERT INTO player_stats(player_uuid,player_value,updated_at) VALUES (?,?,now())
+                        ON DUPLICATE KEY UPDATE player_value=player_stats.player_value+VALUES(player_value),
+                        updated_at=now()
+                        """)) {
+                    statsMySqlJdbcValues.bindValue(1, uuid); stats.setLong(2, item.creditedValue()); stats.executeUpdate();
+                }
+                connection.commit(); return true;
+            } catch (SQLException exception) { connection.rollback(); throw exception; }
+            finally { connection.setAutoCommit(true); }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo depositar el objeto en Player Value."); exception.printStackTrace(); return false;
+        }
+    }
+
+    @Override
+    public java.util.List<VaultItemRecord> getVaultItems(UUID uuid, int limit, int offset) {
+        if (!isConnected() || uuid == null || limit < 1 || offset < 0) return java.util.List.of();
+        java.util.List<VaultItemRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("""
+                     SELECT item_id,material,amount,item_payload,credited_value,created_at
+                     FROM player_value_items WHERE player_uuid=? ORDER BY created_at,item_id LIMIT ? OFFSET ?
+                     """)) {
+            queryMySqlJdbcValues.bindValue(1, uuid); query.setInt(2, limit); query.setInt(3, offset);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) {
+                    OffsetDateTime created = MySqlJdbcValues.readOffsetDateTime(rows, "created_at");
+                    items.add(new VaultItemRecord(MySqlJdbcValues.readUuid(rows, "item_id"), uuid,
+                            rows.getString("material"), rows.getInt("amount"), rows.getBytes("item_payload"),
+                            rows.getLong("credited_value"), created.toInstant()));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar la bóveda Player Value."); exception.printStackTrace();
+            return java.util.List.of();
+        }
+    }
+
+    @Override
+    public long getPlayerValue(UUID uuid) {
+        if (!isConnected() || uuid == null) return 0L;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("SELECT player_value FROM player_stats WHERE player_uuid=?")) {
+            queryMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet result = query.executeQuery()) { return result.next() ? result.getLong(1) : 0L; }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo consultar Player Value."); return 0L; }
+    }
+
+    @Override
+    public boolean setVaultCooldown(UUID uuid, java.time.Instant nextAllowedAt) {
+        if (!isConnected() || uuid == null || nextAllowedAt == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
+                     ON DUPLICATE KEY UPDATE next_allowed_at=VALUES(next_allowed_at)
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            statementMySqlJdbcValues.bindValue(2, OffsetDateTime.ofInstant(nextAllowedAt, ZoneId.of("UTC")));
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el cooldown de la bóveda."); return false; }
+    }
+
+    @Override
+    public java.time.Instant getVaultCooldown(UUID uuid) {
+        if (!isConnected() || uuid == null) return java.time.Instant.EPOCH;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=?")) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            try (ResultSet result = statement.executeQuery()) {
+                return result.next() ? MySqlJdbcValues.readOffsetDateTime(result, 1).toInstant() : java.time.Instant.EPOCH;
+            }
+        } catch (SQLException exception) { plugin.getLogger().severe("No se pudo leer el cooldown de la bóveda."); return java.time.Instant.EPOCH; }
+    }
+
+    @Override
+    public VaultClaimRecord createVaultWithdrawal(
+            UUID uuid, UUID itemId, java.time.Instant now, java.time.Instant nextAllowedAt
+    ) {
+        if (!isConnected() || uuid == null || itemId == null || now == null
+                || nextAllowedAt == null || nextAllowedAt.isBefore(now)) return null;
+
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                // Lock the durable owner row first. A SELECT ... FOR UPDATE on the
+                // cooldown table alone does not lock anything when no cooldown row
+                // exists yet, allowing two first-time withdrawals to race.
+                try (PreparedStatement owner = connection.prepareStatement(
+                        "SELECT uuid FROM player_data WHERE uuid=? FOR UPDATE")) {
+                    ownerMySqlJdbcValues.bindValue(1, uuid);
+                    try (ResultSet result = owner.executeQuery()) {
+                        if (!result.next()) {
+                            connection.rollback();
+                            return null;
+                        }
+                    }
+                }
+
+                try (PreparedStatement cooldown = connection.prepareStatement(
+                        "SELECT next_allowed_at FROM vault_cooldowns WHERE player_uuid=? FOR UPDATE")) {
+                    cooldownMySqlJdbcValues.bindValue(1, uuid);
+                    try (ResultSet result = cooldown.executeQuery()) {
+                        if (result.next()) {
+                            java.time.Instant allowedAt = MySqlJdbcValues.readOffsetDateTime(result, 1).toInstant();
+                            if (now.isBefore(allowedAt)) {
+                                connection.rollback();
+                                return null;
+                            }
+                        }
+                    }
+                }
+
+                String material;
+                int amount;
+                byte[] payload;
+                long value;
+                try (PreparedStatement query = connection.prepareStatement(
+                        "SELECT material,amount,item_payload,credited_value FROM player_value_items WHERE item_id=? AND player_uuid=? FOR UPDATE")) {
+                    queryMySqlJdbcValues.bindValue(1, itemId);
+                    queryMySqlJdbcValues.bindValue(2, uuid);
+                    try (ResultSet result = query.executeQuery()) {
+                        if (!result.next()) {
+                            connection.rollback();
+                            return null;
+                        }
+                        material = result.getString(1);
+                        amount = result.getInt(2);
+                        payload = result.getBytes(3);
+                        value = result.getLong(4);
+                    }
+                }
+
+                try (PreparedStatement delete = connection.prepareStatement(
+                        "DELETE FROM player_value_items WHERE item_id=? AND player_uuid=?")) {
+                    deleteMySqlJdbcValues.bindValue(1, itemId);
+                    deleteMySqlJdbcValues.bindValue(2, uuid);
+                    if (delete.executeUpdate() != 1) {
+                        connection.rollback();
+                        return null;
+                    }
+                }
+                try (PreparedStatement update = connection.prepareStatement(
+                        "UPDATE player_stats SET player_value=player_value-?,updated_at=now() WHERE player_uuid=? AND player_value>=?")) {
+                    update.setLong(1, value);
+                    updateMySqlJdbcValues.bindValue(2, uuid);
+                    update.setLong(3, value);
+                    if (update.executeUpdate() != 1) throw new SQLException("Player Value desincronizado");
+                }
+
+                UUID operationId = UUID.randomUUID();
+                UUID claimId = UUID.randomUUID();
+                try (PreparedStatement operation = connection.prepareStatement(
+                        "INSERT INTO vault_operations(operation_id,player_uuid,operation_type,status,item_id,material,amount,item_payload,credited_value) VALUES (?,?,'WITHDRAW','DELIVERY_PENDING',?,?,?,?,?)")) {
+                    operationMySqlJdbcValues.bindValue(1, operationId);
+                    operationMySqlJdbcValues.bindValue(2, uuid);
+                    operationMySqlJdbcValues.bindValue(3, itemId);
+                    operation.setString(4, material);
+                    operation.setInt(5, amount);
+                    operation.setBytes(6, payload);
+                    operation.setLong(7, value);
+                    operation.executeUpdate();
+                }
+                try (PreparedStatement claim = connection.prepareStatement(
+                        "INSERT INTO vault_claims(claim_id,operation_id,player_uuid,item_payload,material,amount,status) VALUES (?,?,?,?,?,?,'PENDING')")) {
+                    claimMySqlJdbcValues.bindValue(1, claimId);
+                    claimMySqlJdbcValues.bindValue(2, operationId);
+                    claimMySqlJdbcValues.bindValue(3, uuid);
+                    claim.setBytes(4, payload);
+                    claim.setString(5, material);
+                    claim.setInt(6, amount);
+                    claim.executeUpdate();
+                }
+                try (PreparedStatement cooldown = connection.prepareStatement("""
+                        INSERT INTO vault_cooldowns(player_uuid,next_allowed_at) VALUES (?,?)
+                        ON DUPLICATE KEY UPDATE next_allowed_at=VALUES(next_allowed_at)
+                        """)) {
+                    cooldownMySqlJdbcValues.bindValue(1, uuid);
+                    cooldownMySqlJdbcValues.bindValue(2, OffsetDateTime.ofInstant(nextAllowedAt, ZoneId.of("UTC")));
+                    cooldown.executeUpdate();
+                }
+
+                connection.commit();
+                return new VaultClaimRecord(claimId, operationId, uuid, material, amount, payload, "PENDING");
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException | java.time.DateTimeException exception) {
+            plugin.getLogger().severe("No se pudo crear el retiro de Player Value.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean markVaultClaimDelivering(UUID claimId, UUID playerUuid) {
+        if (!isConnected() || claimId == null || playerUuid == null) return false;
+        String sql = """
+                UPDATE vault_claims
+                SET status='DELIVERING'
+                WHERE claim_id=? AND player_uuid=? AND status='PENDING'
+                  AND EXISTS (
+                      SELECT 1 FROM vault_operations
+                      WHERE vault_operations.operation_id=vault_claims.operation_id
+                        AND vault_operations.player_uuid=? AND vault_operations.status='DELIVERY_PENDING'
+                  )
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statementMySqlJdbcValues.bindValue(1, claimId);
+            statementMySqlJdbcValues.bindValue(2, playerUuid);
+            statementMySqlJdbcValues.bindValue(3, playerUuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo iniciar la entrega del retiro.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markVaultClaimDelivered(UUID claimId, UUID playerUuid) {
+        if (!isConnected() || claimId == null || playerUuid == null) return false;
+        try (Connection c = pool.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                UUID operationId;
+                try (PreparedStatement update = c.prepareStatement("""
+                        UPDATE vault_claims SET status='DELIVERED', delivered_at=now()
+                        WHERE claim_id=? AND player_uuid=? AND status IN ('DELIVERING','RECOVERY_REQUIRED')
+                        
+                        """)) {
+                    updateMySqlJdbcValues.bindValue(1, claimId);
+                    updateMySqlJdbcValues.bindValue(2, playerUuid);
+                    if (update.executeUpdate() != 1) { c.rollback(); return false; }
+                    try (PreparedStatement lookup = c.prepareStatement("SELECT operation_id FROM vault_claims WHERE claim_id=? AND player_uuid=?")) {
+                        MySqlJdbcValues.bindValue(lookup, 1, claimId); MySqlJdbcValues.bindValue(lookup, 2, playerUuid);
+                        try (ResultSet result = lookup.executeQuery()) {
+                        if (!result.next()) { c.rollback(); return false; }
+                        operationId = MySqlJdbcValues.readUuid(result, 1);
+                        }
+                    }
+                }
+                try (PreparedStatement operation = c.prepareStatement("""
+                        UPDATE vault_operations SET status='DELIVERED', updated_at=now()
+                        WHERE operation_id=? AND status IN ('DELIVERY_PENDING','RECOVERY_REQUIRED')
+                        """)) {
+                    operationMySqlJdbcValues.bindValue(1, operationId);
+                    if (operation.executeUpdate() != 1) throw new SQLException("Estado de operación inconsistente");
+                }
+                c.commit();
+                return true;
+            } catch (SQLException exception) {
+                c.rollback();
+                throw exception;
+            } finally {
+                c.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo cerrar atómicamente el retiro.");
+            exception.printStackTrace();
+            return false;
+        }
+    }
+
+
+    @Override
+    public java.util.List<VaultClaimRecord> getPendingVaultClaims(UUID playerUuid){
+        if(!isConnected()||playerUuid==null)return java.util.List.of();
+        java.util.List<VaultClaimRecord> out=new java.util.ArrayList<>();
+        try(Connection c=pool.getConnection();PreparedStatement s=c.prepareStatement("SELECT claim_id,operation_id,item_payload,material,amount,status FROM vault_claims WHERE player_uuid=? AND status='PENDING' ORDER BY created_at")){
+            sMySqlJdbcValues.bindValue(1,playerUuid);try(ResultSet r=s.executeQuery()){while(r.next())out.add(new VaultClaimRecord(MySqlJdbcValues.readUuid(r, 1),MySqlJdbcValues.readUuid(r, 2),playerUuid,r.getString(4),r.getInt(5),r.getBytes(3),r.getString(6)));}return java.util.List.copyOf(out);
+        }catch(SQLException e){plugin.getLogger().severe("No se pudieron consultar retiros pendientes.");return java.util.List.of();}
+    }
+
+
+
+    @Override
+    public java.util.List<VaultClaimRecord> getUncertainVaultClaims(UUID playerUuid) {
+        if (!isConnected() || playerUuid == null) return null;
+        java.util.List<VaultClaimRecord> claims = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement query = connection.prepareStatement("""
+                     SELECT claim_id,operation_id,item_payload,material,amount,status
+                     FROM vault_claims
+                     WHERE player_uuid=? AND status IN ('PENDING','DELIVERING','RECOVERY_REQUIRED')
+                     ORDER BY created_at,claim_id
+                     """)) {
+            queryMySqlJdbcValues.bindValue(1, playerUuid);
+            try (ResultSet rows = query.executeQuery()) {
+                while (rows.next()) claims.add(new VaultClaimRecord(
+                        MySqlJdbcValues.readUuid(rows, "claim_id"),
+                        MySqlJdbcValues.readUuid(rows, "operation_id"), playerUuid,
+                        rows.getString("material"), rows.getInt("amount"),
+                        rows.getBytes("item_payload"), rows.getString("status")));
+            }
+            return java.util.List.copyOf(claims);
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron consultar reclamaciones de retiro inciertas.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public boolean updatePlayerSkin(UUID uuid, String textureHash) {
+        if (!isConnected() || uuid == null) return false;
+        if (textureHash == null) {
+            try (Connection connection = pool.getConnection();
+                 PreparedStatement delete = connection.prepareStatement("DELETE FROM player_skins WHERE player_uuid=?")) {
+                deleteMySqlJdbcValues.bindValue(1, uuid);
+                return delete.executeUpdate() >= 0;
+            } catch (SQLException exception) {
+                plugin.getLogger().warning("No se pudo limpiar la skin registrada para " + uuid + ".");
+                return false;
+            }
+        }
+        if (!textureHash.matches("(?i)[0-9a-f]{32,64}")) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO player_skins(player_uuid,texture_hash,updated_at)
+                VALUES (?,?,now())
+                ON DUPLICATE KEY UPDATE
+                    texture_hash=VALUES(texture_hash),
+                    updated_at=now()
+                """)) {
+            statementMySqlJdbcValues.bindValue(1, uuid);
+            statement.setString(2, textureHash.toLowerCase(java.util.Locale.ROOT));
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("No se pudo actualizar la skin registrada para " + uuid + ".");
+            return false;
+        }
+    }
+
+    @Override
+    public VaultRecoverySummary getVaultRecoverySummary() {
+        if (!isConnected()) return null;
+        String sql = """
+                SELECT
+                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING')),
+                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='DELIVERY_PENDING'),
+                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED'),
+                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED')
+                FROM vault_operations
+                """;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql);
+             ResultSet result = statement.executeQuery()) {
+            if (!result.next()) return null;
+            return new VaultRecoverySummary(result.getInt(1), result.getInt(2),
+                    result.getInt(3), result.getInt(4));
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo consultar el estado de recuperación de Player Value.");
+            exception.printStackTrace();
+            return null;
+        }
+    }
+
+    @Override
+    public int flagUncertainVaultOperations() {
+        if (!isConnected()) return -1;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int changed;
+                try (PreparedStatement claims = connection.prepareStatement(
+                        "UPDATE vault_claims SET status='RECOVERY_REQUIRED' WHERE status='DELIVERING'")) {
+                    changed = claims.executeUpdate();
+                }
+                try (PreparedStatement operations = connection.prepareStatement(
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE status='DELIVERY_PENDING' AND operation_type='WITHDRAW' AND operation_id IN (SELECT operation_id FROM vault_claims WHERE status='RECOVERY_REQUIRED')")) {
+                    operations.executeUpdate();
+                }
+                // A PREPARED deposit may have stopped before or after inventory
+                // mutation. Quarantine it until an inventory-aware recovery can prove its state.
+                try (PreparedStatement deposits = connection.prepareStatement(
+                        "UPDATE vault_operations SET status='RECOVERY_REQUIRED',updated_at=now() WHERE operation_type='DEPOSIT' AND status='PREPARED'")) {
+                    changed += deposits.executeUpdate();
+                }
+                connection.commit();
+                return changed;
+            } catch (SQLException exception) {
+                connection.rollback();
+                throw exception;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron marcar reclamaciones inciertas para recuperación.");
+            exception.printStackTrace();
+            return -1;
+        }
+    }
+
+    private static boolean blank(String value) {
+        return value == null || value.isBlank();
+    }
+
+
+    @Override
+    public TradeSessionRecord getActiveTrade(UUID playerUuid) {
+        if (!isConnected() || playerUuid == null) return null;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT trade_id,player_a,player_b,status,revision,
+                            confirmed_revision_a,confirmed_revision_b
+                     FROM trade_sessions
+                     WHERE (player_a=? OR player_b=?)
+                       AND (status IN ('OPEN','LOCKED','RECOVERY_REQUIRED')
+                            OR (status='EXPIRED' AND EXISTS (
+                                SELECT 1 FROM trade_player_locks l
+                                WHERE l.trade_id=trade_sessions.trade_id AND l.player_uuid=?
+                            )))
+                     ORDER BY created_at DESC LIMIT 1
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, playerUuid);
+            statementMySqlJdbcValues.bindValue(2, playerUuid);
+            statementMySqlJdbcValues.bindValue(3, playerUuid);
+            try (ResultSet result = statement.executeQuery()) {
+                if (!result.next()) return null;
+                return new TradeSessionRecord(
+                        MySqlJdbcValues.readUuid(result, "trade_id"),
+                        MySqlJdbcValues.readUuid(result, "player_a"),
+                        MySqlJdbcValues.readUuid(result, "player_b"),
+                        TradeStatus.valueOf(result.getString("status")),
+                        result.getLong("revision"),
+                        (Long) result.getObject("confirmed_revision_a"),
+                        (Long) result.getObject("confirmed_revision_b"));
+            }
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudo consultar el intercambio activo.");
+            return null;
+        }
+    }
+
+    @Override
+    public java.util.List<TradeEscrowRecord> getTradeItems(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return java.util.List.of();
+        java.util.List<TradeEscrowRecord> items = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT operation_id,trade_id,owner_uuid,recipient_uuid,item_payload,
+                            item_fingerprint,status
+                     FROM trade_item_operations WHERE trade_id=? ORDER BY created_at,operation_id
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, tradeId);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    items.add(new TradeEscrowRecord(
+                            MySqlJdbcValues.readUuid(result, "operation_id"),
+                            MySqlJdbcValues.readUuid(result, "trade_id"),
+                            MySqlJdbcValues.readUuid(result, "owner_uuid"),
+                            MySqlJdbcValues.readUuid(result, "recipient_uuid"),
+                            result.getBytes("item_payload"),
+                            result.getString("item_fingerprint").trim(),
+                            result.getString("status")));
+                }
+            }
+            return java.util.List.copyOf(items);
+        } catch (SQLException | IllegalArgumentException exception) {
+            plugin.getLogger().severe("No se pudieron consultar los objetos del intercambio.");
+            return java.util.List.of();
+        }
+    }
+
+    @Override
+    public boolean createTradeSession(UUID tradeId, UUID playerA, UUID playerB) {
+        if (!isConnected() || tradeId == null || playerA == null || playerB == null || playerA.equals(playerB)) return false;
+        String insertTrade = """
+                INSERT INTO trade_sessions(trade_id,player_a,player_b,status,revision)
+                VALUES (?,?,?,'OPEN',0)
+                """;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement(insertTrade)) {
+                    statementMySqlJdbcValues.bindValue(1, tradeId);
+                    statementMySqlJdbcValues.bindValue(2, playerA);
+                    statementMySqlJdbcValues.bindValue(3, playerB);
+                    statement.executeUpdate();
+                }
+                try (PreparedStatement lock = connection.prepareStatement(
+                        "INSERT INTO trade_player_locks(player_uuid,trade_id) VALUES (?,?)")) {
+                    lockMySqlJdbcValues.bindValue(1, playerA);
+                    lockMySqlJdbcValues.bindValue(2, tradeId);
+                    lock.addBatch();
+                    lockMySqlJdbcValues.bindValue(1, playerB);
+                    lockMySqlJdbcValues.bindValue(2, tradeId);
+                    lock.addBatch();
+                    lock.executeBatch();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo crear la sesión de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean prepareTradeEscrowItem(TradeEscrowItem item) {
+        if (!isConnected() || item == null || !item.verifyPayload()) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                UUID playerA;
+                UUID playerB;
+                long revision;
+                try (PreparedStatement query = connection.prepareStatement(
+                        "SELECT player_a,player_b,revision FROM trade_sessions WHERE trade_id=? AND status='OPEN' FOR UPDATE")) {
+                    queryMySqlJdbcValues.bindValue(1, item.tradeId());
+                    try (ResultSet result = query.executeQuery()) {
+                        if (!result.next()) { connection.rollback(); return false; }
+                        playerA = MySqlJdbcValues.readUuid(result, 1);
+                        playerB = MySqlJdbcValues.readUuid(result, 2);
+                        revision = result.getLong(3);
+                    }
+                }
+                boolean validPair = (item.ownerUuid().equals(playerA) && item.recipientUuid().equals(playerB))
+                        || (item.ownerUuid().equals(playerB) && item.recipientUuid().equals(playerA));
+                if (!validPair) { connection.rollback(); return false; }
+                try (PreparedStatement pending = connection.prepareStatement("""
+                        SELECT 1 FROM trade_item_operations
+                        WHERE trade_id=? AND status IN ('PREPARED','RETURN_PENDING','RECOVERY_REQUIRED')
+                        LIMIT 1
+                        """)) {
+                    pendingMySqlJdbcValues.bindValue(1, item.tradeId());
+                    try (ResultSet result = pending.executeQuery()) {
+                        if (result.next()) { connection.rollback(); return false; }
+                    }
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO trade_item_operations(operation_id,trade_id,owner_uuid,recipient_uuid,
+                            item_payload,item_fingerprint,status)
+                        VALUES (?,?,?,?,?,?,'PREPARED')
+                        """)) {
+                    insertMySqlJdbcValues.bindValue(1, item.escrowItemId());
+                    insertMySqlJdbcValues.bindValue(2, item.tradeId());
+                    insertMySqlJdbcValues.bindValue(3, item.ownerUuid());
+                    insertMySqlJdbcValues.bindValue(4, item.recipientUuid());
+                    insert.setBytes(5, item.payload());
+                    insert.setString(6, item.fingerprint());
+                    insert.executeUpdate();
+                }
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE trade_sessions SET revision=?,confirmed_revision_a=NULL,
+                            confirmed_revision_b=NULL,updated_at=now()
+                        WHERE trade_id=? AND revision=? AND status='OPEN'
+                        """)) {
+                    update.setLong(1, Math.addExact(revision, 1));
+                    updateMySqlJdbcValues.bindValue(2, item.tradeId());
+                    update.setLong(3, revision);
+                    if (update.executeUpdate() != 1) throw new SQLException("Trade revision changed unexpectedly.");
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException | ArithmeticException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo preparar el objeto para escrow.");
+            return false;
+        }
+    }
+
+
+    @Override
+    public boolean requestTradeItemReturn(UUID operationId, UUID ownerUuid, long expectedRevision) {
+        if (!isConnected() || operationId == null || ownerUuid == null || expectedRevision < 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                UUID tradeId;
+                try (PreparedStatement find = connection.prepareStatement(
+                        "SELECT trade_id FROM trade_item_operations WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'")) {
+                    findMySqlJdbcValues.bindValue(1, operationId);
+                    findMySqlJdbcValues.bindValue(2, ownerUuid);
+                    try (ResultSet result = find.executeQuery()) {
+                        if (!result.next()) { connection.rollback(); return false; }
+                        tradeId = MySqlJdbcValues.readUuid(result, 1);
+                    }
+                }
+                try (PreparedStatement updateSession = connection.prepareStatement("""
+                        UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
+                            confirmed_revision_b=NULL,updated_at=now()
+                        WHERE trade_id=? AND status='OPEN' AND revision=?
+                          AND (player_a=? OR player_b=?)
+                        """)) {
+                    updateSessionMySqlJdbcValues.bindValue(1, tradeId);
+                    updateSession.setLong(2, expectedRevision);
+                    updateSessionMySqlJdbcValues.bindValue(3, ownerUuid);
+                    updateSessionMySqlJdbcValues.bindValue(4, ownerUuid);
+                    if (updateSession.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement updateItem = connection.prepareStatement("""
+                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=now()
+                        WHERE operation_id=? AND owner_uuid=? AND status='ESCROWED'
+                        """)) {
+                    updateItemMySqlJdbcValues.bindValue(1, operationId);
+                    updateItemMySqlJdbcValues.bindValue(2, ownerUuid);
+                    if (updateItem.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo preparar la devolución del objeto.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeItemReturned(UUID operationId, UUID ownerUuid) {
+        if (!isConnected() || operationId == null || ownerUuid == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_item_operations SET status='RETURNED',updated_at=now()
+                     WHERE operation_id=? AND owner_uuid=? AND status IN ('RETURN_PENDING','RETURNED')
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, operationId);
+            statementMySqlJdbcValues.bindValue(2, ownerUuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la devolución del objeto.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeEscrowed(UUID operationId) {
+        if (!isConnected() || operationId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_item_operations SET status='ESCROWED',updated_at=now()
+                     WHERE operation_id=? AND status IN ('PREPARED','ESCROWED')
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, operationId);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar el escrow del objeto.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean advanceTradeRevision(UUID tradeId, UUID actor, long expectedRevision) {
+        if (!isConnected() || tradeId == null || actor == null || expectedRevision < 0) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_sessions SET revision=revision+1,confirmed_revision_a=NULL,
+                         confirmed_revision_b=NULL,updated_at=now()
+                     WHERE trade_id=? AND status='OPEN' AND revision=?
+                       AND (player_a=? OR player_b=?)
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, tradeId);
+            statement.setLong(2, expectedRevision);
+            statementMySqlJdbcValues.bindValue(3, actor);
+            statementMySqlJdbcValues.bindValue(4, actor);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo actualizar la revisión del intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean confirmTradeRevision(UUID tradeId, UUID actor, long expectedRevision) {
+        if (!isConnected() || tradeId == null || actor == null || expectedRevision < 0) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_sessions SET
+                         confirmed_revision_a=CASE WHEN player_a=? THEN revision ELSE confirmed_revision_a END,
+                         confirmed_revision_b=CASE WHEN player_b=? THEN revision ELSE confirmed_revision_b END,
+                         updated_at=now()
+                     WHERE trade_id=? AND status='OPEN' AND revision=? AND (player_a=? OR player_b=?)
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, actor);
+            statementMySqlJdbcValues.bindValue(2, actor);
+            statementMySqlJdbcValues.bindValue(3, tradeId);
+            statement.setLong(4, expectedRevision);
+            statementMySqlJdbcValues.bindValue(5, actor);
+            statementMySqlJdbcValues.bindValue(6, actor);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la revisión del intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean lockTradeForSettlement(UUID tradeId, long expectedRevision) {
+        if (!isConnected() || tradeId == null || expectedRevision < 0) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                int changed;
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='LOCKED',updated_at=now()
+                        WHERE trade_id=? AND status='OPEN' AND revision=?
+                          AND confirmed_revision_a=revision AND confirmed_revision_b=revision
+                          AND EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=trade_sessions.trade_id AND o.status='ESCROWED')
+                          AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('ESCROWED','RETURNED'))
+                        """)) {
+                    updateMySqlJdbcValues.bindValue(1, tradeId);
+                    update.setLong(2, expectedRevision);
+                    changed = update.executeUpdate();
+                }
+                if (changed != 1) { connection.rollback(); return false; }
+                try (PreparedStatement updateItems = connection.prepareStatement("""
+                        UPDATE trade_item_operations SET status='DELIVERY_PENDING',updated_at=now()
+                        WHERE trade_id=? AND status='ESCROWED'
+                        """)) {
+                    updateItemsMySqlJdbcValues.bindValue(1, tradeId);
+                    updateItems.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo bloquear el intercambio para entrega.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeItemDelivering(UUID operationId, UUID recipientUuid) {
+        if (!isConnected() || operationId == null || recipientUuid == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_item_operations SET status='DELIVERING',updated_at=now()
+                     WHERE operation_id=? AND recipient_uuid=? AND status='DELIVERY_PENDING'
+                       AND EXISTS (SELECT 1 FROM trade_sessions t
+                                   WHERE t.trade_id=trade_item_operations.trade_id AND t.status='LOCKED')
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, operationId);
+            statementMySqlJdbcValues.bindValue(2, recipientUuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo iniciar la entrega del objeto de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeItemDelivered(UUID operationId, UUID recipientUuid) {
+        if (!isConnected() || operationId == null || recipientUuid == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     UPDATE trade_item_operations SET status='DELIVERED',delivered_at=now(),updated_at=now()
+                     WHERE operation_id=? AND recipient_uuid=? AND status IN ('DELIVERING','DELIVERED')
+                     """)) {
+            statementMySqlJdbcValues.bindValue(1, operationId);
+            statementMySqlJdbcValues.bindValue(2, recipientUuid);
+            return statement.executeUpdate() == 1;
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo confirmar la entrega del objeto de intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean markTradeRecoveryRequired(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='RECOVERY_REQUIRED',updated_at=now()
+                        WHERE trade_id=? AND status IN ('OPEN','LOCKED')
+                        """)) {
+                    updateMySqlJdbcValues.bindValue(1, tradeId);
+                    if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement updateItems = connection.prepareStatement("""
+                        UPDATE trade_item_operations SET status='RECOVERY_REQUIRED',updated_at=now()
+                        WHERE trade_id=? AND status IN ('PREPARED','ESCROWED','RETURN_PENDING','DELIVERY_PENDING','DELIVERING')
+                        """)) {
+                    updateItemsMySqlJdbcValues.bindValue(1, tradeId);
+                    updateItems.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo aislar el intercambio para recuperación.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean completeTrade(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement statement = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='COMMITTED',updated_at=now()
+                        WHERE trade_id=? AND status IN ('LOCKED','RECOVERY_REQUIRED','COMMITTED')
+                          AND EXISTS (SELECT 1 FROM trade_item_operations o WHERE o.trade_id=trade_sessions.trade_id)
+                          AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status NOT IN ('DELIVERED','RETURNED'))
+                        """)) {
+                    statementMySqlJdbcValues.bindValue(1, tradeId);
+                    if (statement.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement release = connection.prepareStatement(
+                        "DELETE FROM trade_player_locks WHERE trade_id=?")) {
+                    releaseMySqlJdbcValues.bindValue(1, tradeId);
+                    release.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo finalizar el intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean cancelEmptyTrade(UUID tradeId, UUID actor) {
+        if (!isConnected() || tradeId == null || actor == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='CANCELLED',updated_at=now()
+                        WHERE trade_id=? AND status='OPEN' AND (player_a=? OR player_b=?)
+                          AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                          WHERE o.trade_id=trade_sessions.trade_id AND o.status<>'RETURNED')
+                        """)) {
+                    updateMySqlJdbcValues.bindValue(1, tradeId);
+                    updateMySqlJdbcValues.bindValue(2, actor);
+                    updateMySqlJdbcValues.bindValue(3, actor);
+                    if (update.executeUpdate() != 1) { connection.rollback(); return false; }
+                }
+                try (PreparedStatement release = connection.prepareStatement(
+                        "DELETE FROM trade_player_locks WHERE trade_id=?")) {
+                    releaseMySqlJdbcValues.bindValue(1, tradeId);
+                    release.executeUpdate();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException exception) {
+                connection.rollback();
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo cancelar el intercambio vacío.");
+            return false;
+        }
+    }
+
+
+    @Override
+    public java.util.List<UUID> expireStaleTrades() {
+        if (!isConnected()) return java.util.List.of();
+        java.util.List<UUID> expired = new java.util.ArrayList<>();
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement query = connection.prepareStatement("""
+                        SELECT t.trade_id FROM trade_sessions t
+                        WHERE t.status='OPEN' AND t.updated_at < DATE_SUB(UTC_TIMESTAMP(6), INTERVAL 24 HOUR)
+                          AND NOT EXISTS (
+                              SELECT 1 FROM trade_item_operations o
+                              WHERE o.trade_id=t.trade_id
+                                AND o.status NOT IN ('ESCROWED','RETURNED')
+                          )
+                        FOR UPDATE
+                        """);
+                     ResultSet result = query.executeQuery()) {
+                    while (result.next()) expired.add(MySqlJdbcValues.readUuid(result, 1));
+                }
+                try (PreparedStatement update = connection.prepareStatement("""
+                        UPDATE trade_sessions SET status='EXPIRED',revision=revision+1,
+                            confirmed_revision_a=NULL,confirmed_revision_b=NULL,updated_at=now()
+                        WHERE trade_id=? AND status='OPEN'
+                        """);
+                     PreparedStatement returns = connection.prepareStatement("""
+                        UPDATE trade_item_operations SET status='RETURN_PENDING',updated_at=now()
+                        WHERE trade_id=? AND status='ESCROWED'
+                        """);
+                     PreparedStatement release = connection.prepareStatement("""
+                        DELETE FROM trade_player_locks
+                        WHERE trade_id=? AND NOT EXISTS (
+                            SELECT 1 FROM trade_item_operations o
+                            WHERE o.trade_id=? AND o.status<>'RETURNED'
+                        )
+                        """)) {
+                    for (UUID tradeId : expired) {
+                        updateMySqlJdbcValues.bindValue(1, tradeId);
+                        if (update.executeUpdate() != 1) continue;
+                        returnsMySqlJdbcValues.bindValue(1, tradeId);
+                        returns.executeUpdate();
+                        releaseMySqlJdbcValues.bindValue(1, tradeId);
+                        releaseMySqlJdbcValues.bindValue(2, tradeId);
+                        release.executeUpdate();
+                    }
+                }
+                connection.commit();
+                return java.util.List.copyOf(expired);
+            } catch (SQLException exception) {
+                connection.rollback();
+                return java.util.List.of();
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudieron expirar intercambios inactivos.");
+            return java.util.List.of();
+        }
+    }
+
+    @Override
+    public boolean completeExpiredTrade(UUID tradeId) {
+        if (!isConnected() || tradeId == null) return false;
+        try (Connection connection = pool.getConnection();
+             PreparedStatement release = connection.prepareStatement("""
+                     DELETE FROM trade_player_locks
+                     WHERE trade_id=? AND EXISTS (
+                         SELECT 1 FROM trade_sessions WHERE trade_id=? AND status='EXPIRED'
+                     ) AND NOT EXISTS (
+                         SELECT 1 FROM trade_item_operations o
+                         WHERE o.trade_id=? AND o.status<>'RETURNED'
+                     )
+                     """)) {
+            releaseMySqlJdbcValues.bindValue(1, tradeId);
+            releaseMySqlJdbcValues.bindValue(2, tradeId);
+            releaseMySqlJdbcValues.bindValue(3, tradeId);
+            if (release.executeUpdate() > 0) return true;
+            try (PreparedStatement verify = connection.prepareStatement("""
+                    SELECT 1 FROM trade_sessions t
+                    WHERE t.trade_id=? AND t.status='EXPIRED'
+                      AND NOT EXISTS (SELECT 1 FROM trade_item_operations o
+                                      WHERE o.trade_id=t.trade_id AND o.status<>'RETURNED')
+                      AND NOT EXISTS (SELECT 1 FROM trade_player_locks l WHERE l.trade_id=t.trade_id)
+                    """)) {
+                verifyMySqlJdbcValues.bindValue(1, tradeId);
+                try (ResultSet result = verify.executeQuery()) { return result.next(); }
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().severe("No se pudo finalizar la expiración del intercambio.");
+            return false;
+        }
+    }
+
+    @Override
+    public boolean replaceClanDirectory(
+            java.util.List<ClanRecord> clans, java.util.List<ClanMemberRecord> members) {
+        if (!isConnected() || clans == null || members == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement inactiveMembers = connection.prepareStatement(
+                            "UPDATE player_clan_memberships SET is_active=FALSE");
+                     PreparedStatement inactiveClans = connection.prepareStatement(
+                            "UPDATE public_clans SET is_active=FALSE")) {
+                    inactiveMembers.executeUpdate();
+                    inactiveClans.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO public_clans
+                            (clan_uuid,name,tag,description,leader_uuid,created_at,member_count,max_members,
+                             points,level,kills,deaths,kdr,is_active)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+                        ON DUPLICATE KEY UPDATE
+                            name=VALUES(name), tag=VALUES(tag), description=VALUES(description),
+                            leader_uuid=VALUES(leader_uuid), created_at=VALUES(created_at),
+                            member_count=VALUES(member_count), max_members=VALUES(max_members),
+                            points=VALUES(points), level=VALUES(level), kills=VALUES(kills),
+                            deaths=VALUES(deaths), kdr=VALUES(kdr), is_active=TRUE, synced_at=now()
+                        """)) {
+                    for (ClanRecord clan : clans) {
+                        insertMySqlJdbcValues.bindValue(1, clan.clanId());
+                        insert.setString(2, clan.name());
+                        insert.setString(3, clan.tag());
+                        insert.setString(4, clan.description());
+                        insertMySqlJdbcValues.bindValue(5, clan.leaderUuid());
+                        insertMySqlJdbcValues.bindValue(6, clan.createdAt().atOffset(java.time.ZoneOffset.UTC));
+                        insert.setInt(7, clan.memberCount());
+                        insert.setInt(8, clan.maxMembers());
+                        insert.setLong(9, clan.points());
+                        insert.setInt(10, clan.level());
+                        insert.setLong(11, clan.kills());
+                        insert.setLong(12, clan.deaths());
+                        insert.setDouble(13, clan.kdr());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_clan_memberships
+                            (player_uuid,clan_uuid,rank_id,joined_at,kills,deaths,kdr,is_active)
+                        VALUES (?,?,?,?,?,?,?,TRUE)
+                        ON DUPLICATE KEY UPDATE
+                            clan_uuid=VALUES(clan_uuid), rank_id=VALUES(rank_id),
+                            joined_at=VALUES(joined_at), kills=VALUES(kills),
+                            deaths=VALUES(deaths), kdr=VALUES(kdr), is_active=TRUE,
+                            synced_at=now()
+                        """)) {
+                    for (ClanMemberRecord member : members) {
+                        insertMySqlJdbcValues.bindValue(1, member.playerUuid());
+                        insertMySqlJdbcValues.bindValue(2, member.clanUuid());
+                        insert.setString(3, member.rankId());
+                        insertMySqlJdbcValues.bindValue(4, member.joinedAt().atOffset(java.time.ZoneOffset.UTC));
+                        insert.setLong(5, member.kills());
+                        insert.setLong(6, member.deaths());
+                        insert.setDouble(7, member.kdr());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                plugin.getLogger().warning("No se pudo actualizar la proyección pública de zMClans; se conserva el último snapshot válido.");
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("No se pudo abrir una transacción para sincronizar zMClans.");
+            return false;
+        }
+    }
+
+
+}
