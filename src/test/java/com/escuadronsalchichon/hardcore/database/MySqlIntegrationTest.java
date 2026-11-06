@@ -1,10 +1,8 @@
 package com.escuadronsalchichon.hardcore.database;
 
 import org.junit.jupiter.api.BeforeAll;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
-import org.testcontainers.containers.MySQLContainer;
-import org.testcontainers.junit.jupiter.Container;
-import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -16,17 +14,12 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@Testcontainers(disabledWithoutDocker = true)
 class MySqlIntegrationTest {
-
-    @Container
-    private static final MySQLContainer<?> MYSQL = new MySQLContainer<>("mysql:8.4")
-            .withDatabaseName("salchichon")
-            .withUsername("salchichon")
-            .withPassword("test-password");
 
     @BeforeAll
     static void initializeSchema() throws SQLException, IOException {
+        Assumptions.assumeTrue(System.getenv("SALCHICHON_MYSQL_TEST_URL") != null,
+                "Set SALCHICHON_MYSQL_TEST_URL to run MySQL integration tests");
         String schema;
         try (var stream = MySqlIntegrationTest.class.getResourceAsStream("/db/mysql/schema-v1.sql")) {
             assertNotNull(stream, "MySQL schema resource must be packaged");
@@ -145,7 +138,10 @@ class MySqlIntegrationTest {
     }
 
     private static Connection connection() throws SQLException {
-        return DriverManager.getConnection(MYSQL.getJdbcUrl(), MYSQL.getUsername(), MYSQL.getPassword());
+        return DriverManager.getConnection(
+                System.getenv("SALCHICHON_MYSQL_TEST_URL"),
+                System.getenv("SALCHICHON_MYSQL_TEST_USER"),
+                System.getenv("SALCHICHON_MYSQL_TEST_PASSWORD"));
     }
 
     private static void insertPlayer(Connection connection, UUID player) throws SQLException {
