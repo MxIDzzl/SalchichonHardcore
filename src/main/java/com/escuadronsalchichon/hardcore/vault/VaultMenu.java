@@ -50,6 +50,7 @@ public final class VaultMenu {
         }
 
         inventory.setItem(45, button(Material.ARROW, "Página anterior", holder.hasPrevious()));
+        inventory.setItem(47, button(Material.HOPPER, "Depositar objetos", true));
         inventory.setItem(49, button(Material.NETHER_STAR,
                 "Player Value: " + PlayerValueFormatter.compact(playerValue), false));
         inventory.setItem(53, button(Material.ARROW, "Página siguiente", holder.hasNext()));
