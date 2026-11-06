@@ -30,9 +30,9 @@ public final class SqliteToMySqlImporter {
     private final JavaPlugin plugin;
     private final MySqlConnectionPool mysql;
 
-    public SqliteToPostgresImporter(JavaPlugin plugin, PostgresConnectionPool postgres) {
+    public SqliteToMySqlImporter(JavaPlugin plugin, MySqlConnectionPool mysql) {
         this.plugin = plugin;
-        this.postgres = postgres;
+        this.mysql = mysql;
     }
 
     public ImportReport importDatabase(File sqliteFile, ZoneId legacyTimezone) throws SQLException {
