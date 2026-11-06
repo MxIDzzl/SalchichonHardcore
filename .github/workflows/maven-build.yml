@@ -26,6 +26,9 @@ jobs:
           - name: MariaDB 11.4
             image: mariadb:11.4
             health-command: healthcheck.sh --connect --innodb_initialized
+          - name: MariaDB 10.11
+            image: mariadb:10.11
+            health-command: healthcheck.sh --connect --innodb_initialized
     env:
       SALCHICHON_MYSQL_TEST_URL: jdbc:mysql://127.0.0.1:3306/salchichon?useSSL=false&allowPublicKeyRetrieval=true
       SALCHICHON_MYSQL_TEST_USER: root
