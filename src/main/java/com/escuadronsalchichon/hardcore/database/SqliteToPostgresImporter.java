@@ -60,21 +60,26 @@ public final class SqliteToPostgresImporter {
             destination.setAutoCommit(false);
             try {
                 long players = importPlayers(source, destination);
+                long stats = importPlayerStats(source, destination);
+                long skins = importPlayerSkins(source, destination);
+                long statEvents = importStatEvents(source, destination, legacyTimezone);
                 long audits = importAudit(source, destination, legacyTimezone);
-                resetAuditIdentity(destination);
+                resetIdentity(destination, "admin_audit", "id");
+                resetIdentity(destination, "stat_events", "id");
 
-                long destinationPlayers = count(destination, "player_data");
-                long destinationAudits = count(destination, "admin_audit");
-                if (players != destinationPlayers || audits != destinationAudits) {
-                    throw new SQLException("La verificación de conteos no coincide; se canceló la importación.");
-                }
+                verifyCount(destination, "player_data", players);
+                verifyCount(destination, "player_stats", stats);
+                verifyCount(destination, "player_skins", skins);
+                verifyCount(destination, "stat_events", statEvents);
+                verifyCount(destination, "admin_audit", audits);
 
                 destination.commit();
                 plugin.getLogger().info(
-                        "Importación SQLite validada: " + players + " jugadores y "
-                                + audits + " registros administrativos."
+                        "Importación SQLite validada: " + players + " jugadores, " + stats
+                                + " estadísticas, " + skins + " skins, " + statEvents
+                                + " eventos estadísticos y " + audits + " auditorías."
                 );
-                return new ImportReport(players, audits);
+                return new ImportReport(players, stats, skins, statEvents, audits);
             } catch (SQLException | RuntimeException exception) {
                 try {
                     destination.rollback();
@@ -103,8 +108,13 @@ public final class SqliteToPostgresImporter {
 
     private void verifySourceSchema(Connection source) throws SQLException {
         requireColumns(source, "player_data", "uuid", "username", "last_death_date", "totem_uses");
+        requireColumns(source, "player_stats", "player_uuid", "official_deaths", "playtime_ticks", "player_value");
+        requireColumns(source, "player_skins", "player_uuid", "texture_hash");
+        requireColumns(source, "stat_events", "id", "player_uuid", "stat_key", "previous_value",
+                "new_value", "actor", "reason", "created_at");
         requireColumns(source, "admin_audit", "id", "target_uuid", "target_name",
                 "admin_name", "action", "reason", "created_at");
+        ensureUnsupportedSourceTablesEmpty(source);
     }
 
     private void requireColumns(Connection connection, String table, String... required) throws SQLException {
@@ -123,8 +133,12 @@ public final class SqliteToPostgresImporter {
     }
 
     private void ensureDestinationEmpty(Connection destination) throws SQLException {
-        if (count(destination, "player_data") != 0 || count(destination, "admin_audit") != 0) {
-            throw new SQLException("La base PostgreSQL destino no está vacía; no se importaron datos.");
+        String[] tables = {"player_data", "admin_audit", "player_stats", "player_skins", "stat_events"};
+        for (String table : tables) {
+            if (count(destination, table) != 0) {
+                throw new SQLException("La tabla PostgreSQL destino " + table
+                        + " no está vacía; no se importaron datos.");
+            }
         }
     }
 
@@ -173,6 +187,137 @@ public final class SqliteToPostgresImporter {
             write.executeBatch();
         }
         return count;
+    }
+
+
+    private void ensureUnsupportedSourceTablesEmpty(Connection source) throws SQLException {
+        // Refuse cutover rather than silently dropping operational records or serialized items.
+        String[] tables = {"player_value_items", "vault_operations", "vault_claims",
+                "vault_cooldowns", "player_value_adjustments", "trade_sessions",
+                "trade_escrow_items", "trade_item_operations", "trade_player_locks",
+                "operation_receipts"};
+        for (String table : tables) {
+            if (count(source, table) != 0) {
+                throw new SQLException("La tabla SQLite " + table + " contiene datos operativos "
+                        + "que esta versión no migra. No se modificó ninguna base; requiere un plan específico.");
+            }
+        }
+    }
+
+    private long importPlayerStats(Connection source, Connection destination) throws SQLException {
+        String select = "SELECT player_uuid, official_deaths, playtime_ticks, player_value FROM player_stats ORDER BY player_uuid";
+        String insert = "INSERT INTO player_stats(player_uuid, official_deaths, playtime_ticks, player_value) VALUES (?, ?, ?, ?)";
+        long imported = 0;
+        try (Statement read = source.createStatement();
+             ResultSet rows = read.executeQuery(select);
+             PreparedStatement write = destination.prepareStatement(insert)) {
+            while (rows.next()) {
+                UUID uuid = parseUuid(rows.getString("player_uuid"), "player_stats", imported + 1);
+                long deaths = rows.getLong("official_deaths");
+                long playtime = rows.getLong("playtime_ticks");
+                long value = rows.getLong("player_value");
+                if (deaths < 0 || playtime < 0 || value < 0) {
+                    throw new SQLException("Estadística negativa para " + uuid + "; se canceló la importación.");
+                }
+                write.setObject(1, uuid);
+                write.setLong(2, deaths);
+                write.setLong(3, playtime);
+                write.setLong(4, value);
+                write.addBatch();
+                imported++;
+                if (imported % 500 == 0) write.executeBatch();
+            }
+            write.executeBatch();
+        }
+        return imported;
+    }
+
+    private long importPlayerSkins(Connection source, Connection destination) throws SQLException {
+        String select = "SELECT player_uuid, texture_hash FROM player_skins ORDER BY player_uuid";
+        String insert = "INSERT INTO player_skins(player_uuid, texture_hash) VALUES (?, ?)";
+        long imported = 0;
+        try (Statement read = source.createStatement();
+             ResultSet rows = read.executeQuery(select);
+             PreparedStatement write = destination.prepareStatement(insert)) {
+            while (rows.next()) {
+                UUID uuid = parseUuid(rows.getString("player_uuid"), "player_skins", imported + 1);
+                String hash = rows.getString("texture_hash");
+                if (hash == null || !hash.matches("(?i)[0-9a-f]{32,64}")) {
+                    throw new SQLException("Hash de skin inválido para " + uuid + ".");
+                }
+                write.setObject(1, uuid);
+                write.setString(2, hash.toLowerCase(java.util.Locale.ROOT));
+                write.addBatch();
+                imported++;
+                if (imported % 500 == 0) write.executeBatch();
+            }
+            write.executeBatch();
+        }
+        return imported;
+    }
+
+    private long importStatEvents(Connection source, Connection destination, ZoneId timezone) throws SQLException {
+        String select = "SELECT id, player_uuid, stat_key, previous_value, new_value, actor, reason, created_at FROM stat_events ORDER BY id";
+        String insert = "INSERT INTO stat_events(id, player_uuid, stat_key, previous_value, new_value, actor, reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+        long imported = 0;
+        try (Statement read = source.createStatement();
+             ResultSet rows = read.executeQuery(select);
+             PreparedStatement write = destination.prepareStatement(insert)) {
+            while (rows.next()) {
+                long id = rows.getLong("id");
+                UUID uuid = parseUuid(rows.getString("player_uuid"), "stat_events", id);
+                write.setLong(1, id);
+                write.setObject(2, uuid);
+                write.setString(3, rows.getString("stat_key"));
+                write.setLong(4, rows.getLong("previous_value"));
+                write.setLong(5, rows.getLong("new_value"));
+                write.setString(6, rows.getString("actor"));
+                write.setString(7, rows.getString("reason"));
+                write.setObject(8, parseTimestamp(rows.getString("created_at"), timezone, "stat_events", id));
+                write.addBatch();
+                imported++;
+                if (imported % 500 == 0) write.executeBatch();
+            }
+            write.executeBatch();
+        }
+        return imported;
+    }
+
+    private UUID parseUuid(String value, String table, long row) throws SQLException {
+        try {
+            return UUID.fromString(value);
+        } catch (RuntimeException exception) {
+            throw new SQLException("UUID inválido en " + table + ", fila/ID " + row + ".", exception);
+        }
+    }
+
+    private java.time.OffsetDateTime parseTimestamp(String value, ZoneId timezone,
+                                                     String table, long row) throws SQLException {
+        if (value == null || value.isBlank()) {
+            throw new SQLException("Timestamp vacío en " + table + ", fila/ID " + row + ".");
+        }
+        try {
+            return LocalDateTime.parse(value.trim().replace(' ', 'T'))
+                    .atZone(timezone).toOffsetDateTime();
+        } catch (DateTimeParseException exception) {
+            throw new SQLException("Timestamp no reconocido en " + table + ", fila/ID " + row + ".", exception);
+        }
+    }
+
+    private void verifyCount(Connection destination, String table, long expected) throws SQLException {
+        long actual = count(destination, table);
+        if (actual != expected) {
+            throw new SQLException("La verificación de conteos no coincide para " + table
+                    + " (origen=" + expected + ", destino=" + actual + ").");
+        }
+    }
+
+    private void resetIdentity(Connection destination, String table, String column) throws SQLException {
+        try (Statement statement = destination.createStatement()) {
+            statement.execute("SELECT setval(pg_get_serial_sequence('" + table + "', '" + column
+                    + "'), COALESCE((SELECT MAX(" + column + ") FROM " + table + "), 1), "
+                    + "EXISTS (SELECT 1 FROM " + table + "))");
+        }
     }
 
     private long importAudit(Connection source, Connection destination, ZoneId timezone) throws SQLException {
@@ -245,5 +390,6 @@ public final class SqliteToPostgresImporter {
         }
     }
 
-    public record ImportReport(long playersImported, long auditRowsImported) { }
+    public record ImportReport(long playersImported, long statsImported, long skinsImported,
+                               long statEventsImported, long auditRowsImported) { }
 }
