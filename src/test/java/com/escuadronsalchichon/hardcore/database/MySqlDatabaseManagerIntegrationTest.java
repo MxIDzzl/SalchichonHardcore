@@ -93,8 +93,8 @@ class MySqlDatabaseManagerIntegrationTest {
 
         VaultRecoverySummary recovery = manager.getVaultRecoverySummary();
         assertNotNull(recovery);
-        assertEquals(0, recovery.depositPrepared());
-        assertEquals(0, recovery.withdrawalPending());
+        assertEquals(0, recovery.preparedDeposits());
+        assertEquals(0, recovery.pendingWithdrawals());
     }
 
     private static VaultItemRecord item(UUID playerId, long value) {
