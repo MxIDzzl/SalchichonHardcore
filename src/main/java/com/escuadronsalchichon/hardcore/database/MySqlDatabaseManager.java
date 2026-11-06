@@ -56,6 +56,23 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         }
     }
 
+    /**
+     * Imports the legacy SQLite database explicitly; never runs during startup.
+     * The source remains read-only and SQLite is retained for rollback.
+     */
+    public SqliteToMySqlImporter.ImportReport importLegacySqlite() throws SQLException {
+        String configuredZone = plugin.getConfig().getString(
+                "settings.timezone", "America/Mexico_City");
+        final ZoneId zone;
+        try {
+            zone = ZoneId.of(configuredZone);
+        } catch (RuntimeException exception) {
+            throw new SQLException("La zona horaria configurada no es válida: " + configuredZone, exception);
+        }
+        return new SqliteToMySqlImporter(plugin, pool).importDatabase(
+                new java.io.File(plugin.getDataFolder(), "hardcore.db"), zone);
+    }
+
     @Override
     public void disconnect() {
         pool.close();
