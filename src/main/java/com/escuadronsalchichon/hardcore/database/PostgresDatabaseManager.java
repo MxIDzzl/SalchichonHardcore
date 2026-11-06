@@ -1605,5 +1605,86 @@ public final class PostgresDatabaseManager implements PlayerDataStore {
         }
     }
 
+    @Override
+    public boolean replaceClanDirectory(
+            java.util.List<ClanRecord> clans, java.util.List<ClanMemberRecord> members) {
+        if (!isConnected() || clans == null || members == null) return false;
+        try (Connection connection = pool.getConnection()) {
+            connection.setAutoCommit(false);
+            try {
+                try (PreparedStatement inactiveMembers = connection.prepareStatement(
+                            "UPDATE player_clan_memberships SET is_active=FALSE");
+                     PreparedStatement inactiveClans = connection.prepareStatement(
+                            "UPDATE public_clans SET is_active=FALSE")) {
+                    inactiveMembers.executeUpdate();
+                    inactiveClans.executeUpdate();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO public_clans
+                            (clan_uuid,name,tag,description,leader_uuid,created_at,member_count,max_members,
+                             points,level,kills,deaths,kdr,is_active)
+                        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,TRUE)
+                        ON CONFLICT(clan_uuid) DO UPDATE SET
+                            name=EXCLUDED.name, tag=EXCLUDED.tag, description=EXCLUDED.description,
+                            leader_uuid=EXCLUDED.leader_uuid, created_at=EXCLUDED.created_at,
+                            member_count=EXCLUDED.member_count, max_members=EXCLUDED.max_members,
+                            points=EXCLUDED.points, level=EXCLUDED.level, kills=EXCLUDED.kills,
+                            deaths=EXCLUDED.deaths, kdr=EXCLUDED.kdr, is_active=TRUE, synced_at=now()
+                        """)) {
+                    for (ClanRecord clan : clans) {
+                        insert.setObject(1, clan.clanId());
+                        insert.setString(2, clan.name());
+                        insert.setString(3, clan.tag());
+                        insert.setString(4, clan.description());
+                        insert.setObject(5, clan.leaderUuid());
+                        insert.setObject(6, clan.createdAt().atOffset(java.time.ZoneOffset.UTC));
+                        insert.setInt(7, clan.memberCount());
+                        insert.setInt(8, clan.maxMembers());
+                        insert.setLong(9, clan.points());
+                        insert.setInt(10, clan.level());
+                        insert.setLong(11, clan.kills());
+                        insert.setLong(12, clan.deaths());
+                        insert.setDouble(13, clan.kdr());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                try (PreparedStatement insert = connection.prepareStatement("""
+                        INSERT INTO player_clan_memberships
+                            (player_uuid,clan_uuid,rank_id,joined_at,kills,deaths,kdr,is_active)
+                        VALUES (?,?,?,?,?,?,?,TRUE)
+                        ON CONFLICT(player_uuid) DO UPDATE SET
+                            clan_uuid=EXCLUDED.clan_uuid, rank_id=EXCLUDED.rank_id,
+                            joined_at=EXCLUDED.joined_at, kills=EXCLUDED.kills,
+                            deaths=EXCLUDED.deaths, kdr=EXCLUDED.kdr, is_active=TRUE,
+                            synced_at=now()
+                        """)) {
+                    for (ClanMemberRecord member : members) {
+                        insert.setObject(1, member.playerUuid());
+                        insert.setObject(2, member.clanUuid());
+                        insert.setString(3, member.rankId());
+                        insert.setObject(4, member.joinedAt().atOffset(java.time.ZoneOffset.UTC));
+                        insert.setLong(5, member.kills());
+                        insert.setLong(6, member.deaths());
+                        insert.setDouble(7, member.kdr());
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                connection.commit();
+                return true;
+            } catch (SQLException | RuntimeException exception) {
+                connection.rollback();
+                plugin.getLogger().warning("No se pudo actualizar la proyección pública de zMClans; se conserva el último snapshot válido.");
+                return false;
+            } finally {
+                connection.setAutoCommit(true);
+            }
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("No se pudo abrir una transacción para sincronizar zMClans.");
+            return false;
+        }
+    }
+
 
 }
