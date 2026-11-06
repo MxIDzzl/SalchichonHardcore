@@ -28,7 +28,7 @@ Este repositorio contiene el **código fuente** del plugin. Para consultar los c
 ## ⚔️ Funciones
 
 - Sistema de vidas y estado de supervivencia.
-- Registro persistente de datos de jugadores mediante SQLite.
+- Registro persistente de datos de jugadores mediante SQLite (predeterminado) o MySQL (staging).
 - Contador de usos de tótems de inmortalidad.
 - Estadística de muertes y tiempo jugado.
 - Información de salud y absorción.
@@ -66,7 +66,7 @@ La configuración de temporada y zona horaria se administra desde `config.yml`.
 
 ## Instalación
 
-Consulta [docs/INSTALLATION.md](docs/INSTALLATION.md) para la primera instalación con SQLite, dependencias opcionales y el procedimiento de staging antes de PostgreSQL.
+Consulta [docs/INSTALLATION.md](docs/INSTALLATION.md) para la primera instalación con SQLite, dependencias opcionales y el procedimiento de staging y migración a MySQL.
 
 ## 🛠️ Construcción
 
@@ -98,7 +98,7 @@ El historial público de cambios, novedades y versiones del servidor se mantiene
 
 The `/value [page]` command opens a paginated inventory viewer over durable vault records. `/value deposit` supports allow-listed plain items from the main hand. It persists a PDC operation marker and PREPARED journal before removing the stack, then commits the item and aggregate score transactionally. On join, uncertain deposits are reconciled using both the exact marker and a durable state transition: marker present with PREPARED/RECOVERY_REQUIRED means cancel and keep the item; marker absent with DEPOSIT/DELIVERY_PENDING means commit. Ambiguous combinations remain blocked for manual review. Inventory actions are locked while a deposit/recovery is in progress.
 
-The feature remains disabled by default in `config.yml`. Withdrawals now use a durable claim, a plugin-owned PDC marker, inventory save, and atomic claim/operation acknowledgement. Interrupted claims are reconciled only when the exact marked amount is present; missing or partial evidence remains quarantined. Full crash-injection integration tests against SQLite and PostgreSQL are still required. Do not enable Player Value on the live server yet.
+The feature remains disabled by default in `config.yml`. Withdrawals now use a durable claim, a plugin-owned PDC marker, inventory save, and atomic claim/operation acknowledgement. Interrupted claims are reconciled only when the exact marked amount is present; missing or partial evidence remains quarantined. Full crash-injection integration tests and staging validation are still required. Do not enable Player Value on the live server yet.
 
 
 ## Intercambios de objetos
