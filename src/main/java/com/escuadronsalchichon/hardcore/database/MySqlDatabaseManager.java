@@ -169,7 +169,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         try (Connection connection = pool.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             MySqlJdbcValues.bindValue(statement, 1, uuid);
-            return statement.executeUpdate() == 1;
+            return statement.executeUpdate() > 0;
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo registrar el uso de tótem.");
             exception.printStackTrace();
@@ -697,7 +697,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
                      """)) {
             MySqlJdbcValues.bindValue(statement, 1, uuid);
             MySqlJdbcValues.bindValue(statement, 2, OffsetDateTime.ofInstant(nextAllowedAt, ZoneId.of("UTC")));
-            return statement.executeUpdate() == 1;
+            return statement.executeUpdate() >= 0;
         } catch (SQLException exception) { plugin.getLogger().severe("No se pudo guardar el cooldown de la bóveda."); return false; }
     }
 
@@ -853,7 +853,7 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
             MySqlJdbcValues.bindValue(statement, 1, claimId);
             MySqlJdbcValues.bindValue(statement, 2, playerUuid);
             MySqlJdbcValues.bindValue(statement, 3, playerUuid);
-            return statement.executeUpdate() == 1;
+            return statement.executeUpdate() >= 0;
         } catch (SQLException exception) {
             plugin.getLogger().severe("No se pudo iniciar la entrega del retiro.");
             return false;
@@ -981,10 +981,10 @@ public final class MySqlDatabaseManager implements PlayerDataStore {
         if (!isConnected()) return null;
         String sql = """
                 SELECT
-                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING')),
-                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='DELIVERY_PENDING'),
-                    COUNT(*) FILTER (WHERE operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED'),
-                    COUNT(*) FILTER (WHERE operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED')
+                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status IN ('PREPARED','DELIVERY_PENDING') THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='DELIVERY_PENDING' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN operation_type='DEPOSIT' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN operation_type='WITHDRAW' AND status='RECOVERY_REQUIRED' THEN 1 ELSE 0 END), 0)
                 FROM vault_operations
                 """;
         try (Connection connection = pool.getConnection();
