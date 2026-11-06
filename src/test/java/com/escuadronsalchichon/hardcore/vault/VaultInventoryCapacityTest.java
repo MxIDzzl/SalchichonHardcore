@@ -18,14 +18,14 @@ class VaultInventoryCapacityTest {
     void combinesCompatibleStackSpaceAndAnEmptySlot() {
         assertTrue(VaultInventoryCapacity.canFit(68, 64, List.of(
                 VaultInventoryCapacity.Slot.stack(true, 60, 64),
-                VaultInventoryCapacity.Slot.empty())));
+                VaultInventoryCapacity.Slot.emptySlot())));
     }
 
     @Test
     void rejectsWhenCompatibleAndEmptyCapacityAreInsufficient() {
         assertFalse(VaultInventoryCapacity.canFit(69, 64, List.of(
                 VaultInventoryCapacity.Slot.stack(true, 60, 64),
-                VaultInventoryCapacity.Slot.empty())));
+                VaultInventoryCapacity.Slot.emptySlot())));
     }
 
     @Test
@@ -36,8 +36,8 @@ class VaultInventoryCapacityTest {
 
     @Test
     void rejectsInvalidRequestsAndNullSlotCollections() {
-        assertFalse(VaultInventoryCapacity.canFit(0, 64, List.of(VaultInventoryCapacity.Slot.empty())));
-        assertFalse(VaultInventoryCapacity.canFit(1, 0, List.of(VaultInventoryCapacity.Slot.empty())));
+        assertFalse(VaultInventoryCapacity.canFit(0, 64, List.of(VaultInventoryCapacity.Slot.emptySlot())));
+        assertFalse(VaultInventoryCapacity.canFit(1, 0, List.of(VaultInventoryCapacity.Slot.emptySlot())));
         assertFalse(VaultInventoryCapacity.canFit(1, 64, null));
     }
 }
