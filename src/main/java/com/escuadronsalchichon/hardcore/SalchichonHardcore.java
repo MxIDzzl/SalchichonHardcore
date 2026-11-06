@@ -108,7 +108,7 @@ public class SalchichonHardcore extends JavaPlugin {
         vaultInventoryService = new VaultInventoryService(this, databaseManager);
         vaultWithdrawalService = new VaultWithdrawalService(this, databaseManager, vaultInventoryService);
         valueCommand.setExecutor(new VaultCommand(this, databaseManager, vaultInventoryService));
-        getServer().getPluginManager().registerEvents(new VaultMenuListener(this, vaultWithdrawalService), this);
+        getServer().getPluginManager().registerEvents(new VaultMenuListener(this, vaultWithdrawalService, vaultInventoryService), this);
         getServer().getPluginManager().registerEvents(vaultInventoryService, this);
         getServer().getPluginManager().registerEvents(vaultWithdrawalService, this);
 
