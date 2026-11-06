@@ -12,7 +12,7 @@
 2. Conserva una copia del JAR actual y respalda completa la carpeta `plugins/SalchichonHardcore/`, especialmente `hardcore.db`.
 3. Descarga el artefacto de prueba desde el workflow de [Maven build](https://github.com/MxIDzzl/SalchichonHardcore/actions/workflows/maven-build.yml). El artefacto debe corresponder al commit que se va a instalar.
 4. Sustituye el JAR de SalchichonHardcore, sin borrar la carpeta de datos.
-5. Mantén `database.postgresql.enabled: false` y `player-value.enabled: false`.
+5. Mantén `database.mysql.enabled: false`, `database.mysql.import-sqlite-on-startup: false` y `player-value.enabled: false`.
 6. Inicia Paper y revisa la consola. Debe aparecer `SalchichonHardcore se ha iniciado correctamente.`.
 7. Comprueba /hardcore check para un jugador y los placeholders si PlaceholderAPI está instalado.
 8. Si zMClans está activo, el plugin toma un snapshot público y lo sincroniza cada cinco minutos. No administra clanes ni altera sus datos.
@@ -38,7 +38,7 @@ Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=
 - Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
 - Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
 - Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
-- MySQL: ya existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. CI ejecuta siete pruebas de integración contra MySQL 8.4: esquema/UPSERT, unicidad y rollback, persistencia real de estadísticas/tótems, dos depósitos consecutivos e idempotencia de Player Value, además de importar una SQLite real a una base MySQL vacía sin alterar el archivo fuente. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. MySQL ya está cableado para pruebas controladas, pero `database.mysql.enabled` debe permanecer en `false` en producción.
+- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. CI ejecuta siete pruebas de integración contra MySQL 8.4: esquema/UPSERT, unicidad y rollback, persistencia real de estadísticas/tótems, dos depósitos consecutivos e idempotencia de Player Value, además de importar una SQLite real a una base MySQL vacía sin alterar el archivo fuente. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. MySQL ya está cableado para pruebas controladas, pero `database.mysql.enabled` debe permanecer en `false` en producción.
 - PostgreSQL: implementación heredada de una fase anterior; no es el destino de despliegue acordado. Déjalo desactivado.
 - Los niveles/atributos de mobs se dejan para una fase posterior.
 
