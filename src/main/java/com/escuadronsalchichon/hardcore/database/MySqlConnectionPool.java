@@ -64,8 +64,11 @@ public final class MySqlConnectionPool implements AutoCloseable {
 
         try {
             dataSource = new HikariDataSource(poolConfig);
-            try (Connection ignored = dataSource.getConnection()) {
+            try (Connection connection = dataSource.getConnection()) {
+                var metadata = connection.getMetaData();
                 plugin.getLogger().info("Pool MySQL inicializado correctamente.");
+                plugin.getLogger().info("Motor SQL detectado: "
+                        + metadata.getDatabaseProductName() + " " + metadata.getDatabaseProductVersion());
             }
         } catch (RuntimeException | SQLException exception) {
             close();
