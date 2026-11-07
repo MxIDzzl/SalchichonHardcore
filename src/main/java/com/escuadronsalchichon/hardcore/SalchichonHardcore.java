@@ -2,6 +2,8 @@ package com.escuadronsalchichon.hardcore;
 
 import com.escuadronsalchichon.hardcore.command.HardcoreCommand;
 import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.MySqlDatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.expansion.HardcoreExpansion;
 import com.escuadronsalchichon.hardcore.listener.FoodListener;
 import com.escuadronsalchichon.hardcore.listener.PlayerDeathListener;
@@ -11,24 +13,39 @@ import com.escuadronsalchichon.hardcore.listener.WorldLoadListener;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.DailyResetManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
+import com.escuadronsalchichon.hardcore.manager.PlaytimeTracker;
 import com.escuadronsalchichon.hardcore.manager.WorldRuleManager;
+import com.escuadronsalchichon.hardcore.integration.ClanDirectorySync;
+import com.escuadronsalchichon.hardcore.vault.VaultCommand;
+import com.escuadronsalchichon.hardcore.vault.VaultMenuListener;
+import com.escuadronsalchichon.hardcore.vault.VaultWithdrawalService;
+import com.escuadronsalchichon.hardcore.vault.VaultInventoryService;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.sql.SQLException;
+
 public class SalchichonHardcore extends JavaPlugin {
 
-    private DatabaseManager databaseManager;
+    private PlayerDataStore databaseManager;
     private PlayerManager playerManager;
     private BossBarManager bossBarManager;
     private WorldRuleManager worldRuleManager;
     private DailyResetManager dailyResetManager;
+    private PlaytimeTracker playtimeTracker;
+    private VaultInventoryService vaultInventoryService;
+    private VaultWithdrawalService vaultWithdrawalService;
+    private ClanDirectorySync clanDirectorySync;
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
         reloadConfig();
 
-        databaseManager = new DatabaseManager(this);
+        boolean mysqlRequested = getConfig().getBoolean("database.mysql.enabled", false);
+        databaseManager = mysqlRequested
+                ? new MySqlDatabaseManager(this)
+                : new DatabaseManager(this);
 
         if (!databaseManager.connect()) {
             getLogger().severe("El plugin no puede continuar sin la base de datos.");
@@ -41,6 +58,38 @@ public class SalchichonHardcore extends JavaPlugin {
             databaseManager.disconnect();
             getServer().getPluginManager().disablePlugin(this);
             return;
+        }
+
+        if (mysqlRequested && getConfig().getBoolean("database.mysql.import-sqlite-on-startup", false)) {
+            try {
+                var report = ((MySqlDatabaseManager) databaseManager).importLegacySqlite();
+                getLogger().info("Importación SQLite→MySQL completada: "
+                        + report.playersImported() + " jugadores, "
+                        + report.statsImported() + " estadísticas, "
+                        + report.skinsImported() + " skins, "
+                        + report.statEventsImported() + " eventos y "
+                        + report.auditRowsImported() + " auditorías.");
+                getConfig().set("database.mysql.import-sqlite-on-startup", false);
+                saveConfig();
+            } catch (SQLException exception) {
+                getLogger().severe("Falló la importación SQLite→MySQL. Se conservará SQLite y el plugin se desactivará.");
+                getLogger().severe(exception.getMessage());
+                databaseManager.disconnect();
+                getServer().getPluginManager().disablePlugin(this);
+                return;
+            }
+        }
+
+        int uncertainClaims = databaseManager.flagUncertainVaultOperations();
+        if (uncertainClaims < 0) {
+            getLogger().severe("No se pudo completar la revisión de reclamaciones Player Value; el plugin se desactivará por seguridad.");
+            databaseManager.disconnect();
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        if (uncertainClaims > 0) {
+            getLogger().warning("Se aislaron " + uncertainClaims
+                    + " reclamaciones de retiro interrumpidas. No se entregarán automáticamente; requieren revisión.");
         }
 
         playerManager = new PlayerManager(this, databaseManager);
@@ -56,6 +105,10 @@ public class SalchichonHardcore extends JavaPlugin {
             );
         }
 
+        playtimeTracker = new PlaytimeTracker(this, databaseManager);
+        getServer().getPluginManager().registerEvents(playtimeTracker, this);
+        playtimeTracker.start();
+
         dailyResetManager = new DailyResetManager(this, playerManager, bossBarManager);
         dailyResetManager.start();
 
@@ -69,6 +122,18 @@ public class SalchichonHardcore extends JavaPlugin {
         hardcoreCommand.setExecutor(
                 new HardcoreCommand(this, databaseManager, bossBarManager, playerManager)
         );
+        var valueCommand = getCommand("value");
+        if (valueCommand == null) {
+            getLogger().severe("No se pudo registrar el comando value. Revisa plugin.yml.");
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+        vaultInventoryService = new VaultInventoryService(this, databaseManager);
+        vaultWithdrawalService = new VaultWithdrawalService(this, databaseManager, vaultInventoryService);
+        valueCommand.setExecutor(new VaultCommand(this, databaseManager, vaultInventoryService));
+        getServer().getPluginManager().registerEvents(new VaultMenuListener(this, vaultWithdrawalService, vaultInventoryService), this);
+        getServer().getPluginManager().registerEvents(vaultInventoryService, this);
+        getServer().getPluginManager().registerEvents(vaultWithdrawalService, this);
 
         for (var world : Bukkit.getWorlds()) {
             worldRuleManager.applyRules(world);
@@ -78,6 +143,20 @@ public class SalchichonHardcore extends JavaPlugin {
         getServer().getPluginManager().registerEvents(
                 new PlayerJoinListener(this, playerManager, bossBarManager), this
         );
+
+        clanDirectorySync = new ClanDirectorySync(this, databaseManager);
+        clanDirectorySync.start();
+        if (Bukkit.getPluginManager().isPluginEnabled("SkinsRestorer")) {
+            try {
+                Class<?> bridge = Class.forName(
+                        "com.escuadronsalchichon.hardcore.listener.SkinRestorerSkinSync"
+                );
+                bridge.getMethod("registerIfAvailable", JavaPlugin.class, PlayerDataStore.class)
+                        .invoke(null, this, databaseManager);
+            } catch (ReflectiveOperationException | LinkageError exception) {
+                getLogger().warning("No se pudo cargar la integración opcional de SkinsRestorer; el plugin continuará sin sincronizar skins.");
+            }
+        }
         getServer().getPluginManager().registerEvents(
                 new PlayerDeathListener(this, playerManager, bossBarManager), this
         );
@@ -96,11 +175,17 @@ public class SalchichonHardcore extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (playtimeTracker != null) {
+            playtimeTracker.shutdown();
+        }
         if (dailyResetManager != null) {
             dailyResetManager.cancel();
         }
         if (bossBarManager != null) {
             bossBarManager.removeAll();
+        }
+        if (clanDirectorySync != null) {
+            clanDirectorySync.stop();
         }
         if (databaseManager != null) {
             databaseManager.disconnect();
@@ -108,7 +193,7 @@ public class SalchichonHardcore extends JavaPlugin {
         getLogger().info("SalchichonHardcore se ha detenido correctamente.");
     }
 
-    public DatabaseManager getDatabaseManager() {
+    public PlayerDataStore getDatabaseManager() {
         return databaseManager;
     }
 

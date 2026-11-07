@@ -1,7 +1,10 @@
 package com.escuadronsalchichon.hardcore.expansion;
 
-import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
+import com.escuadronsalchichon.hardcore.util.PlayerValueFormatter;
+import com.escuadronsalchichon.hardcore.util.PlaytimeFormatter;
+import com.escuadronsalchichon.hardcore.util.DifficultyProgression;
 import me.clip.placeholderapi.expansion.PlaceholderExpansion;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.OfflinePlayer;
@@ -11,17 +14,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.format.DateTimeParseException;
-import java.time.temporal.ChronoUnit;
 
 public class HardcoreExpansion extends PlaceholderExpansion {
     private final JavaPlugin plugin;
     private final PlayerManager playerManager;
-    private final DatabaseManager databaseManager;
+    private final PlayerDataStore databaseManager;
 
-    public HardcoreExpansion(JavaPlugin plugin, PlayerManager playerManager, DatabaseManager databaseManager) {
+    public HardcoreExpansion(JavaPlugin plugin, PlayerManager playerManager, PlayerDataStore databaseManager) {
         this.plugin = plugin;
         this.playerManager = playerManager;
         this.databaseManager = databaseManager;
@@ -41,13 +40,15 @@ public class HardcoreExpansion extends PlaceholderExpansion {
                 case "lives" -> playerManager.hasLife(player.getUniqueId()) ? "1" : "0";
                 case "status" -> playerManager.hasLife(player.getUniqueId()) ? "DISPONIBLE" : "SIN VIDAS";
                 case "totems" -> String.valueOf(databaseManager.getTotems(player.getUniqueId()));
-                case "deaths" -> String.valueOf(player.getStatistic(Statistic.DEATHS));
-                case "playtime" -> formatPlaytime(player.getStatistic(Statistic.PLAY_ONE_MINUTE));
+                case "deaths" -> String.valueOf(databaseManager.getOfficialDeaths(player.getUniqueId()));
+                case "playtime" -> PlaytimeFormatter.format(databaseManager.getPlaytimeTicks(player.getUniqueId()));
+                case "value" -> String.valueOf(databaseManager.getPlayerValue(player.getUniqueId()));
+                case "value_compact" -> PlayerValueFormatter.compact(databaseManager.getPlayerValue(player.getUniqueId()));
                 case "health" -> getHealthValue(player);
                 case "health_display" -> getHealthDisplay(player);
                 case "season" -> plugin.getConfig().getString("season.name", "UHC SEASON 1");
-                case "difficulty" -> plugin.getConfig().getString("season.difficulty", "HARD");
-                case "season_day" -> getSeasonDay();
+                case "difficulty" -> DifficultyProgression.currentDifficulty(plugin);
+                case "season_day" -> String.valueOf(DifficultyProgression.seasonDay(plugin));
                 default -> null;
             };
         } catch (Exception exception) {
@@ -75,25 +76,5 @@ public class HardcoreExpansion extends PlaceholderExpansion {
         return value;
     }
 
-    private String formatPlaytime(int ticks) {
-        long minutes = Math.max(0, ticks) / 20L / 60L;
-        long days = minutes / 1440;
-        long hours = (minutes % 1440) / 60;
-        long mins = minutes % 60;
-        if (days > 0) return days + "d " + hours + "h";
-        if (hours > 0) return hours + "h " + mins + "m";
-        return mins + "m";
-    }
 
-    private String getSeasonDay() {
-        String start = plugin.getConfig().getString("season.start-date", LocalDate.now().toString());
-        String zoneName = plugin.getConfig().getString("settings.timezone", "America/Mexico_City");
-        try {
-            LocalDate startDate = LocalDate.parse(start);
-            LocalDate today = LocalDate.now(ZoneId.of(zoneName));
-            return String.valueOf(Math.max(1, ChronoUnit.DAYS.between(startDate, today) + 1));
-        } catch (java.time.DateTimeException exception) {
-            return "1";
-        }
-    }
 }

@@ -4,10 +4,44 @@ settings:
   timezone: "America/Mexico_City"
   daily-reset: "00:00"
 
+# MySQL está cableado y disponible para pruebas controladas/staging.
+# Mantén enabled: false en producción hasta validar la versión del hosting,
+# importación de una copia SQLite, recuperación y backup/restore.
+# SQLite (hardcore.db) sigue siendo el backend predeterminado. No borres ese archivo.
+database:
+  mysql:
+    enabled: false
+    # One-time migration only: enable after backing up hardcore.db and using an empty MySQL schema.
+    # The importer validates the source and destination; after success this flag resets to false.
+    import-sqlite-on-startup: false
+    jdbc-url: "jdbc:mysql://127.0.0.1:3306/salchichon?useUnicode=true&characterEncoding=utf8&serverTimezone=UTC"
+    username-env: "SALCHICHON_MYSQL_USER"
+    password-env: "SALCHICHON_MYSQL_PASSWORD"
+    pool:
+      maximum-size: 8
+      minimum-idle: 2
+      connection-timeout-ms: 10000
+      validation-timeout-ms: 5000
+      max-lifetime-ms: 1800000
+
+# Player Value tiene visor, depósitos y retiros con journal/PDC y recuperación conservadora.
+# Sigue desactivado hasta completar pruebas de integración con fallos, staging y backup/restore.
+player-value:
+  enabled: false
+  cooldown-seconds: 5
+  max-stack-size-per-operation: 64
+  allowed-items:
+    DIAMOND: 10
+    EMERALD: 6
+    NETHERITE_INGOT: 100
+    ANCIENT_DEBRIS: 25
+    GOLD_INGOT: 2
+
 season:
   name: "UHC SEASON 1"
   start-date: "2026-10-19"
   difficulty: "HARD"
+  difficulty-stages: {}
 
 messages:
   no-permission: "&cNo tienes permiso para utilizar este comando."

@@ -1,0 +1,55 @@
+# Instalación inicial y puesta en marcha
+
+## Requisitos del servidor
+- Paper 26.3 (la compilación se verifica contra Paper 26.3 build 207).
+- Java 25.
+- PlaceholderAPI 2.12.3 (opcional, para placeholders).
+- SkinsRestorer API 15 (opcional, para sincronizar skins).
+- zMClans (opcional; el puente público de clanes se activa si está instalado).
+
+## Primera instalación segura con SQLite
+1. Apaga el servidor.
+2. Conserva una copia del JAR actual y respalda completa la carpeta `plugins/SalchichonHardcore/`, especialmente `hardcore.db`.
+3. Descarga `SalchichonHardcore-test-<SHA>` desde el workflow de [Maven build](https://github.com/MxIDzzl/SalchichonHardcore/actions/workflows/maven-build.yml). Solo se publica después de que pase la matriz completa. Verifica que el SHA del nombre del artefacto coincida con el head que quieres probar y valida `SHA256SUMS.txt` antes de subir el JAR.
+4. Sustituye el JAR de SalchichonHardcore, sin borrar la carpeta de datos.
+5. Mantén `database.mysql.enabled: false`, `database.mysql.import-sqlite-on-startup: false` y `player-value.enabled: false`.
+6. Inicia Paper y revisa la consola. Debe aparecer `SalchichonHardcore se ha iniciado correctamente.`.
+7. Comprueba /hardcore check para un jugador y los placeholders si PlaceholderAPI está instalado.
+8. Si zMClans está activo, el plugin toma un snapshot público y lo sincroniza cada cinco minutos. No administra clanes ni altera sus datos.
+
+## Progresión de dificultad visible
+
+La progresión se configura en `config.yml` bajo `season.difficulty-stages`. Cada clave es el primer día de temporada en que entra la etapa:
+
+```yaml
+season:
+  difficulty: "HARD"
+  difficulty-stages:
+    "1": "HARD"
+    "14": "HARD+"
+    "28": "EXTREME"
+```
+
+Usa los mismos umbrales en la API mediante `SALCHICHON_SEASON_DIFFICULTY_STAGES=1:HARD,14:HARD+,28:EXTREME` y configura la misma fecha de inicio. Esto actualiza el placeholder `%salchichonhardcore_difficulty%` y la dificultad publicada en la web; no modifica mobs ni sus atributos.
+
+## Estado de funciones en esta primera instalación
+- Hardcore diario, estadísticas oficiales y sincronización de tiempo de juego: activables con SQLite.
+- Skins: se guarda el hash público de textura que expone SkinsRestorer.
+- Clanes: se leen desde el API público de zMClans y se proyectan a una caché de solo lectura.
+- Player Value: incluye visor, selector de depósito tipo cofre, depósitos por pila con journal y retiros protegidos. Sigue desactivado por defecto hasta completar pruebas de fallos y staging.
+- Intercambios: los gestiona el plugin externo del servidor; este plugin no registra el comando /trade.
+- MySQL: existen el esquema versionado, el pool JDBC con sesión UTC, el adaptador `PlayerDataStore` y el importador SQLite→MySQL de solo lectura. La base destino debe estar vacía y la importación conserva la SQLite original. El head validado más reciente ejecutó 55 pruebas por motor, con 0 fallos en MySQL 8.4, MariaDB 10.11 y MariaDB 11.4. Al iniciar con MySQL habilitado, el plugin registra el producto y versión exactos del motor en la consola (`Motor SQL detectado: ...`), sin exponer credenciales. Aún faltan validar la versión exacta del proveedor y ensayos de recuperación ante interrupciones en staging. `database.mysql.enabled` debe permanecer en `false` en producción.
+- Los niveles/atributos de mobs se dejan para una fase posterior.
+
+## Futuro cambio de SQLite a MySQL
+
+La instalación de producción debe continuar usando SQLite hasta completar staging. El backend MySQL ya puede seleccionarse en un servidor de pruebas con `database.mysql.enabled: true`; el valor predeterminado sigue siendo `false`. No cambies producción todavía.
+
+Antes del cambio deberán estar terminados y probados:
+1. Obtener la versión exacta desde el log privado `Motor SQL detectado: ...` en una conexión de staging; el prefijo `jdbc:mysql://` por sí solo no identifica si el servidor es MySQL o MariaDB. Verificar el DDL contra esa versión.
+2. Confirmar que las tres matrices CI (MySQL 8.4, MariaDB 10.11 y MariaDB 11.4) del commit exacto que se vaya a probar siguen pasando. Descargar únicamente el artefacto asociado a ese mismo SHA y verificar su checksum.
+3. En staging, activar `database.mysql.enabled: true` con una base vacía. Si se migran datos, respaldar `hardcore.db`, activar también `database.mysql.import-sqlite-on-startup: true` durante un solo arranque y dejar que el importador valide integridad, destino vacío, conteos e IDs. Tras una importación correcta, volver esa opción a `false`.
+4. Ensayar interrupciones y recuperación de depósitos/retiros sin duplicar ni perder objetos.
+5. Verificar un backup restaurable y completar el ensayo de staging antes de habilitar el backend.
+
+La base SQLite original y sus respaldos se conservarán. Si la importación falla, el plugin se desactiva sin borrar SQLite. No habrá cambio de producción ni activación de Player Value hasta superar esas comprobaciones.

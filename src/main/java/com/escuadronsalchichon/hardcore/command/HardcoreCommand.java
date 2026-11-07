@@ -1,10 +1,11 @@
 package com.escuadronsalchichon.hardcore.command;
 
 import com.escuadronsalchichon.hardcore.SalchichonHardcore;
-import com.escuadronsalchichon.hardcore.database.DatabaseManager;
+import com.escuadronsalchichon.hardcore.database.PlayerDataStore;
 import com.escuadronsalchichon.hardcore.manager.BossBarManager;
 import com.escuadronsalchichon.hardcore.manager.PlayerManager;
 import com.escuadronsalchichon.hardcore.player.PlayerData;
+import com.escuadronsalchichon.hardcore.util.PlaytimeFormatter;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -17,13 +18,13 @@ import java.util.Locale;
 public class HardcoreCommand implements CommandExecutor {
 
     private final SalchichonHardcore plugin;
-    private final DatabaseManager databaseManager;
+    private final PlayerDataStore databaseManager;
     private final BossBarManager bossBarManager;
     private final PlayerManager playerManager;
 
     public HardcoreCommand(
             SalchichonHardcore plugin,
-            DatabaseManager databaseManager,
+            PlayerDataStore databaseManager,
             BossBarManager bossBarManager,
             PlayerManager playerManager
     ) {
@@ -52,6 +53,25 @@ public class HardcoreCommand implements CommandExecutor {
 
         String subcommand = args[0].toLowerCase(Locale.ROOT);
 
+        if (subcommand.equals("vault-status")) {
+            if (args.length != 1) {
+                sender.sendMessage("§cUso: /hardcore vault-status");
+                return true;
+            }
+            var summary = databaseManager.getVaultRecoverySummary();
+            if (summary == null) {
+                sender.sendMessage("§cNo se pudo consultar el estado del almacén Player Value.");
+                return true;
+            }
+            sender.sendMessage("§d§lPlayer Value — estado de operaciones");
+            sender.sendMessage("§7Depósitos pendientes: §f" + summary.preparedDeposits());
+            sender.sendMessage("§7Retiros DELIVERY_PENDING: §f" + summary.pendingWithdrawals());
+            sender.sendMessage("§7Depósitos RECOVERY_REQUIRED: §c" + summary.recoveryRequiredDeposits());
+            sender.sendMessage("§7Retiros RECOVERY_REQUIRED: §c" + summary.recoveryRequiredWithdrawals());
+            sender.sendMessage("§8Consulta de solo lectura; no modifica ni entrega objetos.");
+            return true;
+        }
+
         if (subcommand.equals("reload")) {
             plugin.reloadPluginConfiguration();
             sender.sendMessage("§aConfiguración de SalchichonHardcore recargada.");
@@ -73,12 +93,49 @@ public class HardcoreCommand implements CommandExecutor {
             boolean hasLife = playerManager.hasLife(target.getUuid());
 
             switch (subcommand) {
+                case "stat" -> {
+                    if (args.length < 5) {
+                        sender.sendMessage("§cUso: /hardcore stat <jugador> <deaths|playtime|value> <nuevo_valor> <motivo>");
+                        return true;
+                    }
+                    long value;
+                    try {
+                        value = Long.parseLong(args[3]);
+                        if (value < 0) throw new NumberFormatException();
+                    } catch (NumberFormatException invalid) {
+                        sender.sendMessage("§cEl valor debe ser un entero mayor o igual a cero.");
+                        return true;
+                    }
+                    String statKey = args[2].toLowerCase(Locale.ROOT);
+                    if (!java.util.Set.of("deaths", "playtime", "value").contains(statKey)) {
+                        sender.sendMessage("§cEstadística válida: deaths, playtime (ticks) o value.");
+                        return true;
+                    }
+                    String reason = String.join(" ", Arrays.copyOfRange(args, 4, args.length)).trim();
+                    if (reason.isBlank()) {
+                        sender.sendMessage("§cDebes indicar un motivo.");
+                        return true;
+                    }
+                    if (!databaseManager.setOfficialStat(target.getUuid(), statKey, value, sender.getName(), reason)) {
+                        sender.sendMessage("§cNo se pudo corregir la estadística. Revisa los datos y la consola.");
+                        return true;
+                    }
+                    sender.sendMessage("§aEstadística §f" + statKey + " §aactualizada para §f" + target.getUsername());
+                    sender.sendMessage("§7Nuevo valor: §f" + value + " §8| §7Motivo: §f" + reason);
+                }
                 case "check" -> {
                     sender.sendMessage("§6§lEstado de jugador");
                     sender.sendMessage("§7Jugador: §f" + target.getUsername());
                     sender.sendMessage("§7Estado: " + (hasLife ? "§aVIDA DISPONIBLE" : "§cSIN VIDAS"));
                     sender.sendMessage("§7Última muerte: §f" +
                             (target.getLastDeathDate() == null ? "Ninguna registrada" : target.getLastDeathDate()));
+                    long officialDeaths = databaseManager.getOfficialDeaths(target.getUuid());
+                    long playtimeTicks = databaseManager.getPlaytimeTicks(target.getUuid());
+                    long playerValue = databaseManager.getPlayerValue(target.getUuid());
+                    sender.sendMessage("§7Muertes oficiales: §f" + officialDeaths);
+                    sender.sendMessage("§7Tiempo registrado: §f" + PlaytimeFormatter.format(playtimeTicks));
+                    sender.sendMessage("§7Player Value: §d" + com.escuadronsalchichon.hardcore.util.PlayerValueFormatter.compact(playerValue)
+                            + " §8(" + playerValue + ")");
                 }
                 case "restore" -> {
                     if (hasLife) {
@@ -152,8 +209,10 @@ public class HardcoreCommand implements CommandExecutor {
     private void sendUsage(CommandSender sender) {
         sender.sendMessage("§6§lSalchichonHardcore");
         sender.sendMessage("§e/hardcore check <jugador>");
+        sender.sendMessage("§e/hardcore vault-status §7(estado interno, solo lectura)");
         sender.sendMessage("§e/hardcore restore <jugador> <motivo>");
         sender.sendMessage("§e/hardcore reset <jugador> <motivo>");
+        sender.sendMessage("§e/hardcore stat <jugador> <deaths|playtime|value> <valor> <motivo>");
         sender.sendMessage("§e/hardcore reload");
     }
 }
